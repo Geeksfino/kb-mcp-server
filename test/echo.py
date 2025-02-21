@@ -56,10 +56,10 @@ mcp = FastMCP(
 logger.info("Created FastMCP instance")
 
 @mcp.tool()
-async def echo(ctx: Context, message: str) -> str:
+async def echo(ctx: Context, text: str) -> str:
     """Echo back the message."""
-    logger.info(f"Echo called with message: {message}")
-    return f"Echo: {message}"
+    logger.info(f"Echo called with text: {text}")
+    return f"Echo: {text}"
 
 logger.info("Registered echo tool")
 
@@ -73,3 +73,6 @@ signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
 logger.info("=== Echo server ready ===")
+
+if __name__ == "__main__":
+    mcp.run()

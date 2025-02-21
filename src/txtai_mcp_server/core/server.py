@@ -9,6 +9,11 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any
 
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.lowlevel.server import Server as MCPServer
+from mcp.server.lowlevel.server import lifespan as default_lifespan
+from mcp.server.session import ServerSession
+from mcp.types import TextContent, ImageContent
+
 from txtai.embeddings import Embeddings
 
 from .context import TxtAIContext
@@ -17,8 +22,28 @@ from ..resources import register_config_resources, register_model_resources
 from ..prompts import register_search_prompts
 
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,  # Set to DEBUG level
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # Ensure logs go to stderr
+)
+
 logger = logging.getLogger(__name__)
 
+class TxtAIServer(MCPServer):
+    """Custom MCP server class that properly handles lifespan context."""
+    def __init__(self, name: str, instructions: str | None = None):
+        super().__init__(name, instructions)
+        self._lifespan_context = None
+
+    @property
+    def lifespan_context(self):
+        return self._lifespan_context
+
+    @lifespan_context.setter
+    def lifespan_context(self, context):
+        self._lifespan_context = context
 
 @asynccontextmanager
 async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
@@ -50,6 +75,11 @@ async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
         context = TxtAIContext(embeddings=embeddings)
         lifespan_context = {"txtai_context": context}
         logger.info(f"Total txtai initialization time: {time.time() - t0:.2f}s")
+        
+        # Set the lifespan context on the server
+        if hasattr(ctx, 'server'):
+            ctx.server.lifespan_context = lifespan_context
+        
         yield lifespan_context
     except Exception as e:
         logger.error("Error in txtai_lifespan: %s", e)
@@ -64,14 +94,14 @@ async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
             logger.error("Error in txtai_lifespan cleanup: %s", e)
             logger.error("Traceback: %s", traceback.format_exc())
 
-
 def create_server() -> FastMCP:
     """Create and configure the MCP server."""
     try:
-        # Create server instance
+        # Create server instance with custom server class
         mcp = FastMCP(
             "TxtAI Server",
             lifespan=txtai_lifespan,
+            server_class=TxtAIServer,  # Use our custom server class
             dependencies=["txtai", "torch", "transformers"]
         )
         

@@ -1,7 +1,19 @@
 """
 Search-related tools for the txtai MCP server.
 """
+import logging
+import sys
 from typing import Dict, List, Optional
+import uuid
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,  # Set to DEBUG level
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # Ensure logs go to stderr
+)
+
+logger = logging.getLogger(__name__)
 
 from mcp.server.fastmcp import FastMCP, Context
 from txtai.embeddings import Embeddings
@@ -11,6 +23,7 @@ from ..core.context import TxtAIContext
 
 def register_search_tools(mcp: FastMCP) -> None:
     """Register search-related tools with the MCP server."""
+    logger.debug("Starting registration of search tools...")
     
     @mcp.tool()
     async def semantic_search(
@@ -25,7 +38,10 @@ def register_search_tools(mcp: FastMCP) -> None:
             query: Search query
             limit: Maximum number of results to return
         """
-        lifespan_context = ctx.lifespan_context
+        if not hasattr(ctx, 'server') or not hasattr(ctx.server, 'lifespan_context'):
+            raise RuntimeError("Server not properly initialized - lifespan context is missing")
+            
+        lifespan_context = ctx.server.lifespan_context
         if not lifespan_context or "txtai_context" not in lifespan_context:
             raise RuntimeError("TxtAI context not initialized")
             
@@ -52,13 +68,17 @@ def register_search_tools(mcp: FastMCP) -> None:
             content: Content to add
             id: Optional identifier for the content
         """
-        lifespan_context = ctx.lifespan_context
+        if not hasattr(ctx, 'server') or not hasattr(ctx.server, 'lifespan_context'):
+            raise RuntimeError("Server not properly initialized - lifespan context is missing")
+            
+        lifespan_context = ctx.server.lifespan_context
         if not lifespan_context or "txtai_context" not in lifespan_context:
             raise RuntimeError("TxtAI context not initialized")
             
         txtai_context: TxtAIContext = lifespan_context["txtai_context"]
-        txtai_context.embeddings.add(content)
-        return {"status": "success", "message": "Content added to index"}
+        data = [(id or str(uuid.uuid4()), content)]
+        txtai_context.embeddings.upsert(data)
+        return {"message": "Content added successfully"}
     
     @mcp.tool()
     async def delete_content(
@@ -71,10 +91,15 @@ def register_search_tools(mcp: FastMCP) -> None:
         Args:
             id: Identifier of the content to delete
         """
-        lifespan_context = ctx.lifespan_context
+        if not hasattr(ctx, 'server') or not hasattr(ctx.server, 'lifespan_context'):
+            raise RuntimeError("Server not properly initialized - lifespan context is missing")
+            
+        lifespan_context = ctx.server.lifespan_context
         if not lifespan_context or "txtai_context" not in lifespan_context:
             raise RuntimeError("TxtAI context not initialized")
             
         txtai_context: TxtAIContext = lifespan_context["txtai_context"]
         txtai_context.embeddings.delete([id])
-        return {"status": "success"}
+        return {"message": "Content deleted successfully"}
+    
+    logger.debug("Search tools registered successfully.")
