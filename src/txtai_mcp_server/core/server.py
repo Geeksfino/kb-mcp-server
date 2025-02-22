@@ -8,9 +8,12 @@ import traceback
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any
 
+import torch
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.lowlevel.server import Server as MCPServer
 from txtai.embeddings import Embeddings
+
+from .config import TxtAISettings
 
 logger = logging.getLogger(__name__)
 
@@ -51,25 +54,40 @@ async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
     try:
         t0 = time.time()
         
-        # Initialize embeddings
-        logger.info("Initializing embeddings...")
-        embeddings_config = {
-            "path": "sentence-transformers/all-MiniLM-L6-v2",
-            "method": "transformers",
-            "transform": "mean",
-            "normalize": True,
-            "content": True,  # Store content in the index
-            "gpu": True  # Try GPU first
-        }
+        # Load settings from .env
+        settings = TxtAISettings.load()
+        logger.debug(f"Settings loaded, model_gpu = {settings.model_gpu}")
         
+        embeddings_config = settings.get_embeddings_config()
+        logger.debug(f"Embeddings config created, gpu = {embeddings_config.get('gpu')}")
+        
+        # Initialize embeddings with GPU fallback
         try:
             embeddings = Embeddings(embeddings_config)
-            logger.info("Successfully initialized embeddings with GPU support")
+            logger.info(f"Embeddings initialized with gpu = {embeddings_config.get('gpu')}")
+            
+            # Check actual CUDA usage
+            logger.debug(f"CUDA available: {torch.cuda.is_available()}")
+            logger.debug(f"MPS (Metal) available: {torch.backends.mps.is_available()}")
+            try:
+                if hasattr(embeddings, 'model') and embeddings.model is not None:
+                    model_device = next(embeddings.model.parameters()).device
+                    logger.debug(f"Model is on device: {model_device}")
+                    if str(model_device).startswith('mps'):
+                        logger.debug("Model is using Metal (MPS)")
+                else:
+                    logger.debug("Model not accessible for device check")
+            except Exception as e:
+                logger.debug(f"Could not check model device: {e}")
+                
         except Exception as e:
-            logger.warning(f"Failed to initialize embeddings with GPU: {e}. Falling back to CPU.")
-            embeddings_config["gpu"] = False
-            embeddings = Embeddings(embeddings_config)
-            logger.info("Successfully initialized embeddings on CPU")
+            if embeddings_config["gpu"]:
+                logger.warning(f"Failed to initialize embeddings with GPU: {e}. Falling back to CPU.")
+                embeddings_config["gpu"] = False
+                embeddings = Embeddings(embeddings_config)
+                logger.info("Successfully initialized embeddings on CPU")
+            else:
+                raise
         
         # Create initial index
         logger.info("Creating initial empty index...")
