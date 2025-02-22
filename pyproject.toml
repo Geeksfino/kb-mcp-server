@@ -11,7 +11,7 @@ authors = [
 dependencies = [
     "mcp[cli]", # Core MCP functionality
     "trio", # Required for MCP server async functionality
-    "txtai>=8.3.1",
+    "txtai[all,pipeline]>=8.3.1",  # Include all txtai extras for full functionality
     "datasets",
     "torch>=2.0.0",
     "transformers>=4.30.0",
