@@ -30,3 +30,6 @@ except Exception as e:
     logger.error("Failed to create server: %s", e)
     logger.error("Traceback: %s", traceback.format_exc())
     sys.exit(1)
+
+if __name__ == "__main__":
+    mcp.run()
