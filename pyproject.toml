@@ -9,14 +9,16 @@ authors = [
     { name = "Codeium", email = "support@codeium.com" }
 ]
 dependencies = [
-    "mcp[cli]", # Core MCP functionality
-    "trio", # Required for MCP server async functionality
-    "txtai[all,pipeline]>=8.3.1",  # Include all txtai extras for full functionality
+    "mcp[cli]>=0.5.0",  # Core MCP functionality
+    "trio>=0.24.0",     # Required for MCP server async functionality
+    "txtai[all]>=8.3.1",  # Only include necessary txtai extras
     "datasets",
     "torch>=2.0.0",
     "transformers>=4.30.0",
     "sentence-transformers>=2.2.0",
     "httpx>=0.28.1",
+    "bitsandbytes==0.42.0",  # Pin to working version
+    "pydantic-settings>=2.0"
 ]
 
 [project.optional-dependencies]

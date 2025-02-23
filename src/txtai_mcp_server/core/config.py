@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal
 
+from pydantic import validator
 from pydantic_settings import BaseSettings
 
 
@@ -24,8 +25,18 @@ class TxtAISettings(BaseSettings):
     model_gpu: bool = True
     model_normalize: bool = True
     
-    # Storage settings (existing)
+    # Storage settings
+    storage_mode: Literal["memory", "persistence"] = "memory"
+    
+    # HuggingFace dataset settings (optional, for memory mode)
+    dataset_enabled: bool = False  # Must be true to load dataset
+    dataset_name: Optional[str] = None     # e.g. "wikipedia"
+    dataset_split: str = "train"           # e.g. "train[:100]"
+    dataset_text_field: Optional[str] = None  # Field containing text
+    
+    # Persistence settings (optional, for persistence mode)
     store_content: bool = True
+    index_path: str = "~/.txtai/embeddings"  # Default path for persistence
     
     # New storage settings
     content_url: Optional[str] = None  # SQLAlchemy URL for content DB
@@ -34,12 +45,24 @@ class TxtAISettings(BaseSettings):
     vector_url: Optional[str] = None  # URL for vector DB (required for pgvector)
     vector_schema: Optional[str] = None  # Schema for vector DB
     vector_table: str = "vectors"  # Table name for vector storage
-    index_path: Optional[str] = None  # Path for local storage
     
     class Config:
         env_prefix = "TXTAI_"  # e.g. TXTAI_MODEL_PATH
         env_file = ".env"  # Load from .env file
         env_file_encoding = "utf-8"
+    
+    @validator("dataset_name")
+    def validate_dataset_config(cls, v, values):
+        """Validate dataset configuration."""
+        if values.get("dataset_enabled", False):
+            if not v:
+                raise ValueError("dataset_name is required when dataset_enabled=True")
+        return v
+    
+    @validator("index_path")
+    def validate_index_path(cls, v):
+        """Ensure index_path is expanded."""
+        return str(Path(v).expanduser())
     
     def get_embeddings_config(self) -> Dict[str, Any]:
         """Get embeddings configuration dictionary."""

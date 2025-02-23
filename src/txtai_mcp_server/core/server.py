@@ -7,6 +7,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any
+from pathlib import Path
 
 import torch
 from mcp.server.fastmcp import FastMCP, Context
@@ -14,6 +15,7 @@ from mcp.server.lowlevel.server import Server as MCPServer
 from txtai.embeddings import Embeddings
 
 from .config import TxtAISettings
+from .context import TxtAIContext
 
 logger = logging.getLogger(__name__)
 
@@ -56,30 +58,57 @@ async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
         
         # Load settings from .env
         settings = TxtAISettings.load()
-        logger.debug(f"Settings loaded, model_gpu = {settings.model_gpu}")
+        logger.info(f"Storage mode: {settings.storage_mode}")
         
         embeddings_config = settings.get_embeddings_config()
-        logger.debug(f"Embeddings config created, gpu = {embeddings_config.get('gpu')}")
+        logger.debug(f"Embeddings config created")
         
         # Initialize embeddings with GPU fallback
         try:
             embeddings = Embeddings(embeddings_config)
-            logger.info(f"Embeddings initialized with gpu = {embeddings_config.get('gpu')}")
             
-            # Check actual CUDA usage
-            logger.debug(f"CUDA available: {torch.cuda.is_available()}")
-            logger.debug(f"MPS (Metal) available: {torch.backends.mps.is_available()}")
-            try:
-                if hasattr(embeddings, 'model') and embeddings.model is not None:
-                    model_device = next(embeddings.model.parameters()).device
-                    logger.debug(f"Model is on device: {model_device}")
-                    if str(model_device).startswith('mps'):
-                        logger.debug("Model is using Metal (MPS)")
+            if settings.storage_mode == "persistence":
+                # Try to load existing embeddings, but don't crash if they don't exist
+                storage_path = Path(settings.index_path).expanduser()
+                if storage_path.exists():
+                    try:
+                        logger.info(f"Loading embeddings from {storage_path}")
+                        embeddings.load(str(storage_path))
+                        logger.info("Successfully loaded existing embeddings")
+                    except Exception as e:
+                        logger.warning(f"Failed to load embeddings from {storage_path}: {e}")
+                        logger.info("Starting with empty embeddings")
                 else:
-                    logger.debug("Model not accessible for device check")
-            except Exception as e:
-                logger.debug(f"Could not check model device: {e}")
-                
+                    logger.info(f"No existing embeddings at {storage_path}, starting fresh")
+                    
+            elif settings.dataset_enabled and settings.dataset_name:
+                # Load from HuggingFace dataset if configured
+                try:
+                    from datasets import load_dataset
+                    logger.info(f"Loading dataset: {settings.dataset_name} (split: {settings.dataset_split})")
+                    dataset = load_dataset(settings.dataset_name, split=settings.dataset_split)
+                    
+                    # Auto-detect text field if not specified
+                    text_field = settings.dataset_text_field
+                    if not text_field:
+                        text_fields = ["text", "content", "article", "document"]
+                        for field in text_fields:
+                            if field in dataset.features:
+                                text_field = field
+                                break
+                        if not text_field:
+                            raise ValueError(f"Could not find text field in dataset. Available fields: {list(dataset.features.keys())}")
+                    
+                    # Index dataset
+                    logger.info(f"Indexing {len(dataset)} documents from field '{text_field}'")
+                    embeddings.index([(i, item[text_field], None) for i, item in enumerate(dataset)])
+                    logger.info("Successfully loaded and indexed dataset")
+                except Exception as e:
+                    logger.error(f"Failed to load dataset: {e}")
+                    logger.warning("Starting with empty embeddings")
+            else:
+                logger.info("Starting with empty embeddings (memory mode, no dataset configured)")
+            
         except Exception as e:
             if embeddings_config["gpu"]:
                 logger.warning(f"Failed to initialize embeddings with GPU: {e}. Falling back to CPU.")
@@ -89,28 +118,27 @@ async def txtai_lifespan(ctx: Context) -> AsyncIterator[Dict[str, Any]]:
             else:
                 raise
         
-        # Create initial index
-        logger.info("Creating initial empty index...")
-        embeddings.index([])
+        # Create context
+        txtai_context = TxtAIContext(embeddings=embeddings)
+        logger.info(f"Server initialization completed in {time.time() - t0:.2f}s")
         
-        # Set up context
-        from .context import TxtAIContext
-        context = TxtAIContext(embeddings=embeddings)
-        lifespan_context = {"txtai_context": context}
+        yield {"txtai_context": txtai_context}
         
-        if hasattr(ctx, 'server'):
-            logger.debug("Setting lifespan context on server...")
-            ctx.server.lifespan_context = lifespan_context
-        
-        logger.info(f"Initialization completed in {time.time() - t0:.2f}s")
-        yield lifespan_context
-        
+        # Cleanup
+        if settings.storage_mode == "persistence":
+            storage_path = Path(settings.index_path).expanduser()
+            try:
+                logger.info(f"Saving embeddings to {storage_path}")
+                storage_path.parent.mkdir(parents=True, exist_ok=True)
+                embeddings.save(str(storage_path))
+                logger.info("Successfully saved embeddings")
+            except Exception as e:
+                logger.error(f"Failed to save embeddings: {e}")
+                
     except Exception as e:
-        logger.error(f"Error during initialization: {e}")
+        logger.error(f"Error in txtai lifespan: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
-    finally:
-        logger.info("=== Shutting down txtai server ===")
 
 def create_server() -> FastMCP:
     """Create and configure the MCP server."""
