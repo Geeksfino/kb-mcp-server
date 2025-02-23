@@ -1,37 +1,87 @@
 """Configuration for txtai MCP server."""
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Literal
 
 from pydantic_settings import BaseSettings
 
 
 class TxtAISettings(BaseSettings):
-    """Settings for txtai MCP server."""
+    """Settings for txtai MCP server.
     
-    # Model settings
+    Storage Configuration:
+    1. Local Storage (default):
+       - Content: SQLite database in {index_path}/content.db
+       - Vectors: FAISS index in {index_path}/vectors.faiss
+    
+    2. Remote Storage:
+       - Content: PostgreSQL or other SQLAlchemy-compatible database
+       - Vectors: pgvector or sqlite-vec
+    """
+    
+    # Model settings (existing)
     model_path: str = "sentence-transformers/all-MiniLM-L6-v2"
     model_gpu: bool = True
     model_normalize: bool = True
     
-    # Storage settings
+    # Storage settings (existing)
     store_content: bool = True
+    
+    # New storage settings
+    content_url: Optional[str] = None  # SQLAlchemy URL for content DB
+    content_schema: Optional[str] = None  # Schema for content DB
+    vector_backend: Literal["faiss", "pgvector", "sqlite-vec"] = "faiss"
+    vector_url: Optional[str] = None  # URL for vector DB (required for pgvector)
+    vector_schema: Optional[str] = None  # Schema for vector DB
+    vector_table: str = "vectors"  # Table name for vector storage
+    index_path: Optional[str] = None  # Path for local storage
     
     class Config:
         env_prefix = "TXTAI_"  # e.g. TXTAI_MODEL_PATH
         env_file = ".env"  # Load from .env file
         env_file_encoding = "utf-8"
-        
+    
     def get_embeddings_config(self) -> Dict[str, Any]:
         """Get embeddings configuration dictionary."""
-        return {
-            "path": self.model_path,
+        config = {
+            "path": self.model_path,  # Keep the HuggingFace model path
             "method": "transformers",
             "transform": "mean",
             "normalize": self.model_normalize,
-            "content": self.store_content,
             "gpu": self.model_gpu
         }
+        
+        # Configure content storage
+        if self.content_url:
+            config["content"] = self.content_url
+            if self.content_schema:
+                config["schema"] = self.content_schema
+        else:
+            config["content"] = self.store_content
+        
+        # Configure vector storage
+        if self.vector_backend == "pgvector":
+            if not self.vector_url:
+                raise ValueError("vector_url is required when using pgvector backend")
+            config["backend"] = "pgvector"
+            config["pgvector"] = {
+                "url": self.vector_url,
+                "table": self.vector_table
+            }
+            if self.vector_schema:
+                config["pgvector"]["schema"] = self.vector_schema
+        elif self.vector_backend == "sqlite-vec":
+            config["backend"] = "sqlite-vec"
+            config["table"] = self.vector_table
+        
+        # Set storage path for local storage
+        if self.index_path:
+            config["storage"] = self.index_path
+        elif not self.content_url and self.vector_backend == "faiss":
+            # Default local storage path
+            config["storage"] = str(Path.home() / ".txtai" / "embeddings")
+        
+        return config
     
     @classmethod
     def load(cls) -> "TxtAISettings":
