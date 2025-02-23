@@ -53,13 +53,21 @@ class MCPClient:
             )
             print(f"Add content result: {result}")
 
-            # Now try searching
-            print("\nTesting semantic search...")
-            result = await self.session.call_tool(
-                "semantic_search",
-                {"query": "AI and machine learning", "limit": 5}
-            )
-            print(f"Search result: {result}")
+            # Try different search queries
+            queries = [
+                "AI and machine learning",  # Should find our test doc
+                "Who was Super Bowl MVP?",   # Should find SQuAD sports content
+                "What is the history of Notre Dame?",  # Should find SQuAD history content
+                "Tell me about science and technology"  # Should find both test doc and SQuAD
+            ]
+            
+            for query in queries:
+                print(f"\nTesting search with query: {query}")
+                result = await self.session.call_tool(
+                    "semantic_search",
+                    {"query": query, "limit": 5}
+                )
+                print(f"Search result: {result}")
 
         except Exception as e:
             logger.error(f"Error connecting to server: {e}")

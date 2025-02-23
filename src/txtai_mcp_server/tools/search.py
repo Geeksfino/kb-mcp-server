@@ -52,17 +52,29 @@ def register_search_tools(mcp: FastMCP) -> None:
             txtai_context: TxtAIContext = lifespan_context["txtai_context"]
             logger.debug(f"Searching with query: {query}, limit: {limit}")
             
-            # Search returns a list of dicts with id, text, and score
-            results = txtai_context.embeddings.search(query, limit=limit)
-            logger.debug(f"Raw search results: {results}")
+            # Use SQL-like search with content fields
+            sql = f"select text, context, answer, score from txtai where similar('{query}') limit {limit}"
+            all_results = txtai_context.embeddings.search(sql)
             
+            logger.info(f"Search results ({len(all_results)} total):")
+            for r in all_results[:10]:  # Show top 10 for debugging
+                logger.info(f"  Score: {r['score']:.3f}")
+                logger.info(f"  Question: {r['text']}")
+                if r.get('context'):  # Only show context if it exists
+                    logger.info(f"  Context: {r['context'][:200]}...")
+                if r.get('answer'):
+                    logger.info(f"  Answer: {r['answer']}\n")
+            
+            # Process results into standard format
             processed_results = [
                 {
-                    "id": result["id"],
-                    "score": float(result["score"]),
-                    "content": result["text"]
+                    "id": f"result_{i}",
+                    "score": float(r["score"]),
+                    "content": r.get("context", r["text"]),  # Use context if available, otherwise question
+                    "question": r["text"],
+                    "answer": r.get("answer", "")  # Handle missing answer field
                 }
-                for result in results
+                for i, r in enumerate(all_results)
             ]
             
             logger.debug(f"Processed {len(processed_results)} results")
@@ -100,9 +112,25 @@ def register_search_tools(mcp: FastMCP) -> None:
             content_id = id or str(uuid.uuid4())
             logger.debug(f"Adding content with id: {content_id}")
             
-            # Create a list of (id, text) tuples for indexing
-            data = [(content_id, content)]
-            txtai_context.embeddings.index(data)
+            # Create metadata for the content
+            metadata = {
+                "text": content,  # Store original text
+                "source": "user_added"  # Mark as user-added content
+            }
+            
+            # Create a list of (id, metadata, tags) tuples for indexing
+            data = [(content_id, metadata, None)]
+            
+            # Get existing index size for debugging
+            existing_count = len(txtai_context.embeddings.search("select id from txtai limit 1"))
+            logger.debug(f"Current index size before adding: {existing_count}")
+            
+            # Append to existing index
+            txtai_context.embeddings.upsert(data)
+            
+            # Verify addition
+            new_count = len(txtai_context.embeddings.search("select id from txtai limit 1"))
+            logger.debug(f"New index size after adding: {new_count}")
             
             logger.debug("Content added successfully")
             return {"message": "Content added successfully", "id": content_id}
