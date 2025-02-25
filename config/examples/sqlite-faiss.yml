@@ -1,0 +1,39 @@
+# SQLite + FAISS configuration
+# Good for local development with persistence
+# All data is stored on disk
+
+path: ~/.txtai/embeddings  # Where to save the index
+writable: true  # Allow modifications
+
+# Content storage in SQLite
+content:
+  path: sqlite:///~/.txtai/content.db
+
+embeddings:
+  # Model settings
+  path: sentence-transformers/all-MiniLM-L6-v2
+  backend: faiss  # FAISS vector store
+  gpu: true  # Use GPU if available
+  batch: 32
+  normalize: true
+  
+  # Scoring settings
+  scoring: hybrid
+  hybridalpha: 0.7
+
+# Pipeline settings
+pipeline:
+  workers: 2
+  queue: 100
+  timeout: 300
+
+# QA settings
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3
+
+# Graph storage in SQLite
+graph:
+  backend: sqlite
+  path: ~/.txtai/graph.db

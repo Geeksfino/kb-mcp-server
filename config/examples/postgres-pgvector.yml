@@ -1,0 +1,55 @@
+# PostgreSQL + pgvector configuration
+# Production-ready setup with full persistence
+# Requires PostgreSQL with pgvector extension
+
+path: ~/.txtai/embeddings  # Where to save the index
+writable: true  # Allow modifications
+
+# Content storage in PostgreSQL
+content:
+  path: postgresql://user:pass@localhost:5432/txtai
+  table: sections  # Table name for content
+
+embeddings:
+  # Model settings
+  path: sentence-transformers/all-MiniLM-L6-v2
+  
+  # Vector storage in PostgreSQL
+  backend: pgvector
+  database: postgresql://user:pass@localhost:5432/txtai
+  table: vectors  # Table name for vectors
+  
+  # Model settings
+  gpu: true
+  batch: 32
+  normalize: true
+  
+  # Scoring settings
+  scoring: hybrid
+  hybridalpha: 0.7
+
+# Pipeline settings
+pipeline:
+  workers: 4  # More workers for production
+  queue: 100
+  timeout: 300
+
+# QA settings
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3
+
+# Graph storage in PostgreSQL
+graph:
+  backend: postgres
+  path: postgresql://user:pass@localhost:5432/txtai
+  table: graph  # Table name for graph data
+
+# Optional workflow settings
+workflow:
+  index:
+    schedule:
+      cron: "0 0 * * *"  # Daily at midnight
+    tasks:
+      - action: index  # Re-index data

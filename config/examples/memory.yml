@@ -1,0 +1,30 @@
+# Memory-only configuration
+# Fastest for development and testing
+# All data is lost when server restarts
+
+path: ~/.txtai/embeddings  # Where to save the index
+writable: true  # Allow modifications
+
+embeddings:
+  # Model settings
+  path: sentence-transformers/all-MiniLM-L6-v2
+  backend: memory  # In-memory vectors
+  gpu: true  # Use GPU if available
+  batch: 32
+  normalize: true
+  
+  # Scoring settings
+  scoring: hybrid  # Combine semantic + keyword search
+  hybridalpha: 0.7  # Weight between semantic (α) and keyword (1-α)
+
+# Pipeline settings
+pipeline:
+  workers: 2  # Number of worker processes
+  queue: 100  # Max queue size
+  timeout: 300  # Timeout in seconds
+
+# QA settings
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3

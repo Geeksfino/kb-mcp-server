@@ -1,0 +1,41 @@
+# Default txtai Configuration
+# Uses SQLite for content and FAISS for vectors
+# Provides good balance of performance and persistence
+
+# Path to save/load embeddings index
+path: ~/.txtai/embeddings  # Where to save the index
+writable: true  # Allow modifications
+
+# Content storage in SQLite
+content:
+  path: sqlite:///~/.txtai/content.db
+
+# Embeddings configuration
+embeddings:
+  # Model settings
+  path: sentence-transformers/nli-mpnet-base-v2  # Better quality than MiniLM
+  backend: faiss  # FAISS vector store
+  gpu: true  # Use GPU if available
+  batch: 32
+  normalize: true
+  
+  # Scoring settings
+  scoring: hybrid  # Combine semantic + keyword search
+  hybridalpha: 0.75  # Weight between semantic (α) and keyword (1-α)
+
+# Pipeline configuration
+pipeline:
+  workers: 2  # Number of worker processes
+  queue: 100  # Max queue size
+  timeout: 300  # Timeout in seconds
+
+# Question-answering pipeline
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3
+
+# Graph storage in SQLite
+graph:
+  backend: sqlite
+  path: ~/.txtai/graph.db

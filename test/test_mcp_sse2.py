@@ -1,5 +1,5 @@
 """
-MCP client implementation.
+MCP client implementation for testing SSE transport.
 """
 import asyncio
 import logging
@@ -45,33 +45,49 @@ class MCPClient:
             tools = response.tools
             print("\nConnected to server with tools:", [tool.name for tool in tools])
 
-            # First add some test content
+            # First add some test QA pairs
             print("\nAdding test content...")
-            result = await self.session.call_tool(
-                "add_content",
-                {"content": "This is a test document about artificial intelligence.", "id": "doc1"}
-            )
-            print(f"Add content result: {result}")
+            
+            qa_pairs = [
+                ("what is the name of justin bieber brother?", "Jazmyn Bieber, Jaxon Bieber"),
+                ("what character did natalie portman play in star wars?", "Padmé Amidala"),
+                ("what state does selena gomez?", "New York City"),
+                ("what country is the grand bahama island in?", "Bahamas"),
+                ("what kind of money to take to bahamas?", "Bahamian dollar"),
+                ("what time zone is new york under?", "North American Eastern Time Zone")
+            ]
+            
+            # Add each QA pair
+            for i, (question, answer) in enumerate(qa_pairs):
+                result = await self.session.call_tool(
+                    "add_content",
+                    {
+                        "content": f"{question} {answer}",
+                        "id": f"qa{i+1}",
+                        "is_question": True
+                    }
+                )
+                print(f"Add QA content result {i+1}: {result}")
 
-            # Try different search queries
+            # Test different queries from the example notebook
             queries = [
-                "AI and machine learning",  # Should find our test doc
-                "Who was Super Bowl MVP?",   # Should find SQuAD sports content
-                "What is the history of Notre Dame?",  # Should find SQuAD history content
-                "Tell me about science and technology"  # Should find both test doc and SQuAD
+                "What is the timezone of NYC?",
+                "Things to do in New York",
+                "What is the timezone of Florida?",
+                "Who is Justin Bieber's sibling?",
+                "Tell me about Natalie Portman in Star Wars"
             ]
             
             for query in queries:
                 print(f"\nTesting search with query: {query}")
                 result = await self.session.call_tool(
                     "semantic_search",
-                    {"query": query, "limit": 5}
+                    {"query": query, "limit": 2}  # Limit to top 2 results for clarity
                 )
                 print(f"Search result: {result}")
 
         except Exception as e:
             logger.error(f"Error connecting to server: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
     async def close(self):

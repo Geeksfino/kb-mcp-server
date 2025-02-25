@@ -1,0 +1,24 @@
+# Simple test configuration
+# Uses in-memory storage for quick testing
+
+path: ~/.txtai/test  # Test index location
+writable: true  # Allow modifications
+
+embeddings:
+  path: sentence-transformers/all-MiniLM-L6-v2
+  backend: memory
+  gpu: true
+  batch: 32
+  normalize: true
+  scoring: hybrid
+  hybridalpha: 0.7
+
+pipeline:
+  workers: 1
+  queue: 10
+  timeout: 30
+
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3

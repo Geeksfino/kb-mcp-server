@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  txtai-mcp:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - txtai_data:/data
+    environment:
+      - TXTAI_STORAGE_MODE=persistence
+      - TXTAI_INDEX_PATH=/data/embeddings
+      - TXTAI_DATASET_ENABLED=true
+      - TXTAI_DATASET_NAME=web_questions
+      - TXTAI_DATASET_SPLIT=train
+
+volumes:
+  txtai_data:

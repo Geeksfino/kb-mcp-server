@@ -8,6 +8,4 @@ try:
 except ImportError:
     __version__ = "0.1.0"  # fallback version
 
-from .core import create_server
-
-__all__ = ["create_server"]
+__all__ = ["__version__"]

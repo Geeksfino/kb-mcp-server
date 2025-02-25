@@ -96,6 +96,67 @@ Run all quality checks:
 ./scripts/lint.sh
 ```
 
+## Configuration
+
+The server supports two configuration methods:
+
+### 1. YAML Configuration (Recommended)
+Use txtai's native YAML configuration format for full access to all features:
+
+1. Copy the example config:
+```bash
+cp config.example.yml config.yml
+```
+
+2. Edit `config.yml` to your needs and set:
+```bash
+export TXTAI_YAML_CONFIG=config.yml
+```
+
+See `config.example.yml` for a comprehensive example with all available options. For detailed documentation, see:
+- [txtai Configuration Guide](https://neuml.github.io/txtai/api/configuration)
+- [Embeddings Configuration](https://neuml.github.io/txtai/embeddings/configuration)
+- [Pipeline Configuration](https://neuml.github.io/txtai/pipeline)
+- [Workflow Configuration](https://neuml.github.io/txtai/workflow)
+
+### 2. Environment Variables (Fallback)
+For basic usage, configure through environment variables:
+
+```bash
+# Basic settings
+export TXTAI_MODEL_PATH=sentence-transformers/all-MiniLM-L6-v2
+export TXTAI_STORAGE_MODE=memory  # or persistence
+export TXTAI_INDEX_PATH=~/.txtai/embeddings
+```
+
+Or use a `.env` file (see `.env.example`).
+
+### Configuration Priority
+
+1. **YAML Configuration** (if `TXTAI_YAML_CONFIG` is set)
+   - Full access to all txtai features
+   - Native configuration format
+   - Recommended for production use
+
+2. **Environment Variables** (if no YAML config)
+   - Basic configuration through `TXTAI_` prefixed variables
+   - Limited to core settings
+   - Good for development and testing
+
+3. **Default Values** (if neither above is set)
+   - Model: sentence-transformers/all-MiniLM-L6-v2
+   - Storage: memory
+   - Index: ~/.txtai/embeddings
+
+### Examples
+
+See `config.example.yml` for examples of:
+1. Basic memory storage
+2. Persistent storage with GPU
+3. Full pipeline setup with QA
+4. Workflow configuration
+5. Cloud storage options
+
 ## Usage
 
 ### Starting the Server
