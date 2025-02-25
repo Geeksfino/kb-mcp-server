@@ -1,114 +1,44 @@
-"""
-Question-answering tools for the txtai MCP server.
-"""
+"""Question-answering tools for the txtai MCP server."""
 import logging
-from typing import Dict, List, Optional, Union
-import textwrap
+import sys
+import traceback
+from typing import Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP, Context
-from txtai_mcp_server.core.context import TxtAIContext
+from pydantic import Field
+
+from ..core.context import TxtAIContext
+from .search import get_txtai_context
 
 logger = logging.getLogger(__name__)
 
 def register_qa_tools(mcp: FastMCP) -> None:
-    """Register question-answering tools."""
-    logger.debug("Registering QA tools...")
+    """Register QA-related tools with the MCP server."""
+    logger.debug("Starting registration of QA tools...")
     
     @mcp.tool(
         name="answer_question",
-        description="""Extract precise answers to questions using advanced language models.
+        description="""Answer questions using AI-powered question answering.
         Best used for:
-        - Getting direct answers to specific questions
-        - Extracting precise information from text
-        - Verifying facts from content
-        - Understanding complex information
+        - Getting specific answers from documents
+        - Finding factual information
+        - Extracting precise details
         
-        Uses hybrid search to find relevant context, combining semantic understanding with keyword matching.
+        Uses semantic search to find relevant passages and then extracts the answer.
         
-        Example: "Who created Python?" -> Will extract "Guido van Rossum" from relevant content."""
+        Example: "What is the maximum batch size?" will return the specific batch size value."""
     )
     async def answer_question(
         ctx: Context,
         question: str,
-        context: Optional[str] = None,
-        search_limit: Optional[int] = 3
-    ) -> Dict[str, Union[str, float]]:
-        """Implementation of question answering using txtai application.
-        
-        Args:
-            question: Question to answer
-            context: Optional text to extract from
-            search_limit: Number of search results to use if no context
-            
-        Returns:
-            Dict with answer, confidence score, and sources
-        """
-        logger.debug(f"Answering question: '{question}'")
-        txtai_context = get_txtai_context(ctx)
-        
+        limit: Optional[int] = Field(3, description="Maximum number of passages to search through"),
+    ) -> str:
+        """Answer questions using txtai."""
+        logger.debug(f"QA request - question: {question}, limit: {limit}")
         try:
-            # Get context from search if not provided
-            if not context:
-                logger.debug("No context provided, searching...")
-                # Use Application's search with SQL query
-                sql = """
-                    SELECT text, answer, score, source 
-                    FROM txtai 
-                    WHERE similar(?) 
-                    ORDER BY score DESC 
-                    LIMIT ?
-                """
-                results = txtai_context.app.search(sql, (question, search_limit))
-                
-                if not results:
-                    return {
-                        "answer": "I could not find any relevant information to answer your question.",
-                        "score": 0.0,
-                        "sources": []
-                    }
-                
-                # Build context with clear separators and metadata
-                contexts = []
-                sources = []
-                for i, r in enumerate(results, 1):
-                    text = r.get("answer") or r.get("text", "")
-                    if text:
-                        contexts.append(f"Source {i}:\n{textwrap.indent(text, '  ')}")
-                        sources.append({
-                            "text": r.get("text", "Unknown"),
-                            "score": r.get("score", 0.0),
-                            "source": r.get("source", "unknown")
-                        })
-                
-                if not contexts:
-                    return {
-                        "answer": "Found results but could not extract usable context.",
-                        "score": 0.0,
-                        "sources": []
-                    }
-                    
-                context = "\n\n".join(contexts)
-            else:
-                sources = [{"text": "Provided context", "score": 1.0, "source": "user"}]
-            
-            # Use Application's question-answering
-            logger.debug("Extracting answer...")
-            result = txtai_context.app.extract([(question, context)])[0]
-            
-            answer = {
-                "answer": result["answer"],
-                "score": float(result["score"]),
-                "sources": sources
-            }
-            
-            logger.info(f"Answer: {answer['answer']}")
-            logger.info(f"Confidence: {answer['score']:.3f}")
-            
+            txtai_ctx = get_txtai_context(ctx)
+            answer = txtai_ctx.app.question(question, limit=limit)
             return answer
-            
         except Exception as e:
-            logger.error(f"QA failed: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            raise RuntimeError(f"Failed to answer question: {str(e)}")
-            
-    logger.debug("QA tools registered successfully")
+            logger.error(f"Error in question answering: {str(e)}\n{traceback.format_exc()}")
+            raise

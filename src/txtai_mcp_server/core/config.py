@@ -24,6 +24,11 @@ class TxtAISettings(BaseSettings):
     storage_mode: Literal["memory", "persistence"] = "memory"
     index_path: str = "~/.txtai/embeddings"
     
+    # Model settings
+    model_gpu: bool = True
+    model_normalize: bool = True
+    store_content: bool = True
+    
     @validator("yaml_config", "index_path")
     def expand_path(cls, v: Optional[str]) -> Optional[str]:
         """Expand user path if present."""
@@ -39,7 +44,7 @@ class TxtAISettings(BaseSettings):
     @classmethod
     def load(cls) -> "TxtAISettings":
         """Load settings from environment and .env file."""
-        return super().load()
+        return cls.model_validate({})  # Empty dict will load from env vars
     
     def create_application(self) -> Application:
         """Create txtai Application instance.
@@ -49,32 +54,30 @@ class TxtAISettings(BaseSettings):
                         YAML or environment variables.
         
         Raises:
-            ValueError: If YAML config file not found
+            ValueError: If yaml_config is specified but file not found.
         """
         if self.yaml_config:
-            # Use txtai's native YAML config
             yaml_path = Path(self.yaml_config)
             if not yaml_path.exists():
                 raise ValueError(f"YAML config file not found: {yaml_path}")
             return Application(str(yaml_path))
         
-        # Fallback to basic config
+        # Otherwise configure through settings
         config = {
-            "writable": True,
+            "path": self.model_path,
+            "content": self.store_content,
             "embeddings": {
                 "path": self.model_path,
-                "content": True
+                "storagetype": self.storage_mode,
+                "storagepath": self.index_path,
+                "gpu": self.model_gpu,
+                "normalize": self.model_normalize
             }
         }
-        
-        # Add persistence path if needed
-        if self.storage_mode == "persistence":
-            config["path"] = self.index_path
-            
         return Application(config)
     
     class Config:
-        """Pydantic config."""
-        env_prefix = "TXTAI_"  # Use TXTAI_ prefix for all env vars
+        env_prefix = "TXTAI_"  # Look for TXTAI_ prefixed env vars
+        extra = "allow"  # Allow extra fields from env vars
         env_file = ".env"
         env_file_encoding = "utf-8"

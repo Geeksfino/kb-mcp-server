@@ -11,6 +11,7 @@ from txtai.app import Application
 
 from txtai_mcp_server.core.config import TxtAISettings
 from txtai_mcp_server.core.context import TxtAIContext
+from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app
 from txtai_mcp_server.tools.search import register_search_tools
 from txtai_mcp_server.tools.qa import register_qa_tools
 
@@ -25,27 +26,37 @@ logging.basicConfig(
 logging.getLogger('mcp').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.server').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.transport').setLevel(logging.DEBUG)
-logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)  # Add SSE logging
-logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)  # Add stdio transport logging
+logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)
+logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)
 logging.getLogger('txtai').setLevel(logging.DEBUG)
 logging.getLogger('txtai_mcp_server').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def server_lifespan(_: Context) -> AsyncIterator[Dict[str, Any]]:
-    """Server lifespan."""
+async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
+    """Manage txtai application lifecycle."""
     logger.info("=== Starting txtai server (lifespan) ===")
     try:
+        # Initialize application
+        settings = TxtAISettings.load()
+        app = settings.create_application()
+        set_txtai_app(app)
+        logger.info("Created txtai application")
+        
+        # Yield serializable context
         yield {"status": "ready"}
         logger.info("Server is ready")
+    except Exception as e:
+        logger.error(f"Error during lifespan: {e}", exc_info=True)
+        raise
     finally:
         logger.info("=== Shutting down txtai server (lifespan) ===")
 
-# Create the server
+# Create the server with lifespan
 logger.info("Creating FastMCP instance...")
 mcp = FastMCP(
     "TxtAI Server",
-    lifespan=server_lifespan
+    lifespan=txtai_lifespan
 )
 logger.info("Created FastMCP instance")
 
