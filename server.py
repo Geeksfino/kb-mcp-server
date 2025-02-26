@@ -39,7 +39,15 @@ async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     try:
         # Initialize application
         settings = TxtAISettings.load()
+        logger.debug(f"Loaded TxtAI settings: {settings.dict()}")
+        
         app = settings.create_application()
+        logger.debug("Created txtai application with configuration:")
+        logger.debug(f"- Model path: {app.config.get('path')}")
+        logger.debug(f"- Content storage: {app.config.get('content')}")
+        logger.debug(f"- Embeddings config: {app.config.get('embeddings')}")
+        logger.debug(f"- Extractor config: {app.config.get('extractor')}")
+        
         set_txtai_app(app)
         logger.info("Created txtai application")
         

@@ -1,5 +1,6 @@
 """Configuration for txtai MCP server."""
 import os
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal
 
@@ -7,6 +8,7 @@ from pydantic import validator
 from pydantic_settings import BaseSettings
 from txtai.app import Application
 
+logger = logging.getLogger(__name__)
 
 class TxtAISettings(BaseSettings):
     """Settings for txtai MCP server.
@@ -60,22 +62,45 @@ class TxtAISettings(BaseSettings):
             yaml_path = Path(self.yaml_config)
             if not yaml_path.exists():
                 raise ValueError(f"YAML config file not found: {yaml_path}")
-            return Application(str(yaml_path))
+            logger.debug(f"Loading configuration from YAML file: {yaml_path}")
+            with open(yaml_path) as f:
+                import yaml
+                yaml_config = yaml.safe_load(f)
+                logger.debug(f"Raw YAML configuration: {yaml_config}")
+                
+                # Set writable flag at both root level and embeddings
+                yaml_config["writable"] = True
+                if "embeddings" in yaml_config:
+                    yaml_config["embeddings"]["writable"] = True
+                
+                logger.debug(f"Modified configuration: {yaml_config}")
+                
+                # Create temporary YAML with modified config
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as tmp:
+                    yaml.dump(yaml_config, tmp)
+                    tmp_path = tmp.name
+                
+                logger.debug(f"Creating Application with temporary YAML path: {tmp_path}")
+                return Application(tmp_path)
         
         # Otherwise configure through settings
         config = {
             "path": self.model_path,
             "content": self.store_content,
+            "writable": True,  # Set writable at root level
             "embeddings": {
                 "path": self.model_path,
                 "storagetype": self.storage_mode,
                 "storagepath": self.index_path,
                 "gpu": self.model_gpu,
-                "normalize": self.model_normalize
+                "normalize": self.model_normalize,
+                "writable": True  # Also set writable in embeddings
             }
         }
+        logger.debug(f"Using default configuration: {config}")
         return Application(config)
-    
+
     class Config:
         env_prefix = "TXTAI_"  # Look for TXTAI_ prefixed env vars
         extra = "allow"  # Allow extra fields from env vars

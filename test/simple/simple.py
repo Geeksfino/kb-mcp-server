@@ -10,6 +10,7 @@ Usage:
     python test/simple/simple.py http://localhost:8000/sse
 """
 import asyncio
+import json
 import logging
 import sys
 from contextlib import AsyncExitStack
@@ -61,9 +62,8 @@ class MCPClient:
             response = await self.session.list_tools()
             print("\nAvailable tools:", [tool.name for tool in response.tools])
 
-            # Add test documents from txtai intro
-            print("\nAdding test documents...")
-            documents = [
+            # Test documents
+            test_documents = [
                 "US tops 5 million confirmed virus cases",
                 "Canada's last fully intact ice shelf has suddenly collapsed, forming a Manhattan-sized iceberg",
                 "Beijing mobilises invasion craft along coast as Taiwan tensions escalate",
@@ -72,8 +72,10 @@ class MCPClient:
                 "Make huge profits without work, earn up to $100,000 a day"
             ]
             
-            for i, text in enumerate(documents):
-                result = await self.session.call_tool(
+            # Add test documents to the index
+            print("\nAdding test documents...")
+            for i, text in enumerate(test_documents):
+                await self.session.call_tool(
                     "add_content",
                     {
                         "text": text,
@@ -81,23 +83,78 @@ class MCPClient:
                     }
                 )
                 print(f"Added document {i+1}")
-
+            
             # Test semantic search
             queries = [
                 "feel good story",
                 "climate change",
+                "public health story",
+                "war",
                 "wildlife",
-                "scam"
+                "asia",
+                "lucky",
+                "dishonest junk"
             ]
             
+            # Print header for the table
+            print("\nQuery                Best Match")
+            print("--------------------------------------------------")
+            
+            # Reduce logging level temporarily to make output cleaner
+            original_level = logging.getLogger().level
+            logging.getLogger().setLevel(logging.ERROR)
+            
+            # Process each query and display results in a table format
             for query in queries:
-                print(f"\nSearching for: {query}")
                 result = await self.session.call_tool(
                     "semantic_search",
                     {"query": query, "limit": 1}
                 )
-                print(f"Result: {result[0]['text'] if result else 'No results'}")
-                print(f"Score: {result[0]['score'] if result else 'N/A'}")
+                
+                # Parse the JSON result
+                content_text = str(result.content)
+                
+                # Default text if no results
+                result_text = "No results found"
+                
+                # Extract the document ID from the result
+                doc_id = None
+                
+                # Handle TextContent wrapper if present
+                if "TextContent" in content_text:
+                    import re
+                    json_match = re.search(r"text='(\[.*?\])'", content_text)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        try:
+                            results = json.loads(json_str)
+                            if results and len(results) > 0:
+                                doc_id = results[0].get("id")
+                        except json.JSONDecodeError:
+                            pass
+                # Regular JSON parsing as fallback
+                elif content_text and "[" in content_text and "]" in content_text:
+                    try:
+                        results = json.loads(content_text)
+                        if results and len(results) > 0:
+                            doc_id = results[0].get("id")
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Look up the document text using the ID
+                if doc_id and doc_id.startswith("doc"):
+                    try:
+                        doc_num = int(doc_id[3:])
+                        if 1 <= doc_num <= len(test_documents):
+                            result_text = test_documents[doc_num - 1]
+                    except (ValueError, IndexError):
+                        pass
+                
+                # Format and print the result in a table row
+                print(f"%-20s %s" % (query, result_text))
+            
+            # Restore original logging level
+            logging.getLogger().setLevel(original_level)
 
         except Exception as e:
             logger.error(f"Error during test: {e}")
