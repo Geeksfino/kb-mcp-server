@@ -1,5 +1,6 @@
 path: .txtai/indexes/simple  # Where to save the index
 content: true
+writable: true  # Enable index writing at the root level
 embeddings:
   path: sentence-transformers/nli-mpnet-base-v2  # Model path with prefix
   storagetype: memory  # Keep document database in memory
