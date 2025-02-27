@@ -20,6 +20,10 @@ def main():
     parser.add_argument('--embeddings', type=str, help='Path to embeddings directory or archive file')
     parser.add_argument('--transport', type=str, default='sse', choices=['sse', 'stdio'], 
                         help='Transport to use for MCP server (default: sse)')
+    parser.add_argument('--host', type=str, default='localhost',
+                        help='Host to bind to when using SSE transport (default: localhost)')
+    parser.add_argument('--port', type=int, default=8000,
+                        help='Port to bind to when using SSE transport (default: 8000)')
     
     args = parser.parse_args()
     
@@ -32,7 +36,7 @@ def main():
     
     # Run the server with the specified transport
     if args.transport == 'sse':
-        asyncio.run(run_server(transport='sse'))
+        asyncio.run(run_server(transport='sse', host=args.host, port=args.port))
     else:
         asyncio.run(run_server(transport='stdio'))
 

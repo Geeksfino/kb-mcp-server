@@ -80,17 +80,21 @@ register_search_tools(server)
 register_qa_tools(server)
 logger.info("Registered search and QA tools with module-level server")
 
-async def run_server(transport: str = 'sse'):
+async def run_server(transport: str = 'sse', host: str = 'localhost', port: int = 8000):
     """Run the TxtAI MCP server with the specified transport.
     
     Args:
         transport: The transport to use. Either 'sse' or 'stdio'.
+        host: Host to bind to when using SSE transport (default: localhost).
+        port: Port to bind to when using SSE transport (default: 8000).
     """
     # Create the server with lifespan
     logger.info("Creating FastMCP instance...")
     mcp = FastMCP(
         "TxtAI Server",
-        lifespan=txtai_lifespan
+        lifespan=txtai_lifespan,
+        host=host,
+        port=port
     )
     logger.info("Created FastMCP instance")
 
@@ -109,6 +113,8 @@ async def run_server(transport: str = 'sse'):
     signal.signal(signal.SIGTERM, handle_shutdown)
 
     logger.info(f"=== TxtAI server ready with {transport} transport ===")
+    if transport == 'sse':
+        logger.info(f"Server will be available at http://{host}:{port}/sse")
 
     # Use the high-level run method which handles the transport internally
     if transport == 'sse':
@@ -127,6 +133,10 @@ if __name__ == "__main__":
     parser.add_argument('--embeddings', type=str, help='Path to embeddings directory or archive file')
     parser.add_argument('--transport', type=str, default='stdio', choices=['sse', 'stdio'], 
                         help='Transport to use for MCP server (default: stdio)')
+    parser.add_argument('--host', type=str, default='localhost',
+                        help='Host to bind to when using SSE transport (default: localhost)')
+    parser.add_argument('--port', type=int, default=8000,
+                        help='Port to bind to when using SSE transport (default: 8000)')
     
     args = parser.parse_args()
     
@@ -135,7 +145,7 @@ if __name__ == "__main__":
         os.environ["TXTAI_EMBEDDINGS"] = args.embeddings
     
     # Run the server with the specified transport
-    asyncio.run(run_server(transport=args.transport))
+    asyncio.run(run_server(transport=args.transport, host=args.host, port=args.port))
 
 # This function is called by the MCP CLI
 def run():
