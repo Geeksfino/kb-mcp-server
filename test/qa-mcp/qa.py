@@ -2,12 +2,12 @@
 """
 MCP client for the txtai MCP server.
 
-This script connects to a running MCP server and queries it with a question.
-It prints the answer to stdout.
+This script connects to a running MCP server and allows interactive question-answering.
+The user can ask multiple questions in a continuous session.
 
 Usage:
-    python qa.py http://localhost:8000/sse "What is the capital of France?"
-    python qa.py server.py "What is the capital of France?"
+    python qa.py http://localhost:8000/sse
+    python qa.py server.py
 """
 
 import sys
@@ -103,18 +103,59 @@ class MCPClient:
         if self.exit_stack:
             await self.exit_stack.aclose()
 
+async def interactive_session(client):
+    """Run an interactive Q&A session."""
+    print("\n=== TxtAI Q&A Interactive Session ===")
+    print("Type 'exit', 'quit', or press Ctrl+C to end the session")
+    print("Type 'help' for more information")
+    print("---------------------------------------")
+    
+    try:
+        while True:
+            # Get question from user
+            question = input("\nQ: ").strip()
+            
+            # Check for exit commands
+            if question.lower() in ['exit', 'quit', 'q']:
+                print("Exiting session...")
+                break
+            
+            # Check for help command
+            if question.lower() in ['help', 'h', '?']:
+                print("\nCommands:")
+                print("  exit, quit, q - Exit the session")
+                print("  help, h, ?    - Show this help message")
+                print("\nAsk any question to get an answer from the embeddings.")
+                continue
+            
+            # Skip empty questions
+            if not question:
+                continue
+            
+            # Ask the question
+            logger.info(f"Asking question: {question}")
+            answer = await client.ask_question(question)
+            
+            # Print the answer
+            print(f"A: {answer}")
+    
+    except KeyboardInterrupt:
+        print("\nSession terminated by user.")
+    except Exception as e:
+        logger.error(f"Error in interactive session: {e}", exc_info=True)
+        print(f"\nError: {str(e)}")
+
 async def main_async():
     """Async main function."""
-    # Check if a target and question were provided
-    if len(sys.argv) < 3:
+    # Check if a target was provided
+    if len(sys.argv) < 2:
         print("Usage:")
-        print("  For SSE:   python qa.py http://localhost:8000/sse \"What is your question?\"")
-        print("  For stdio: python qa.py server.py \"What is your question?\"")
+        print("  For SSE:   python qa.py http://localhost:8000/sse")
+        print("  For stdio: python qa.py server.py")
         return 1
     
-    # Get the target and question from command line arguments
+    # Get the target from command line arguments
     target = sys.argv[1]
-    question = " ".join(sys.argv[2:])
     
     # Create client
     client = MCPClient()
@@ -127,13 +168,8 @@ async def main_async():
             print(f"Failed to connect to MCP server at {target}")
             return 1
         
-        # Ask the question
-        logger.info(f"Asking question: {question}")
-        answer = await client.ask_question(question)
-        
-        # Print the result
-        print(f"Q: {question}")
-        print(f"A: {answer}")
+        # Start interactive session
+        await interactive_session(client)
         
         return 0
     except Exception as e:
