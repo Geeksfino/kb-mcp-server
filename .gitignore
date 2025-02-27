@@ -9,4 +9,4 @@ test/cache/
 *.sqlite
 *.faiss
 *.pkl
-
+*.tar.gz
