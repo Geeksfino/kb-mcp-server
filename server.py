@@ -3,6 +3,7 @@ import sys
 import signal
 import asyncio
 import logging
+import argparse
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any
 
@@ -32,16 +33,28 @@ logging.getLogger('txtai').setLevel(logging.DEBUG)
 logging.getLogger('txtai_mcp_server').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='TxtAI MCP Server')
+parser.add_argument('--embeddings', type=str, help='Path to embeddings directory or archive file')
+args = parser.parse_args()
+
 @asynccontextmanager
 async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Manage txtai application lifecycle."""
     logger.info("=== Starting txtai server (lifespan) ===")
     try:
         # Initialize application
-        settings = TxtAISettings.load()
-        logger.debug(f"Loaded TxtAI settings: {settings.dict()}")
+        if args.embeddings:
+            # Load embeddings directly from path
+            logger.info(f"Loading embeddings from path: {args.embeddings}")
+            settings, app = TxtAISettings.from_embeddings(args.embeddings)
+            logger.debug(f"Loaded TxtAI settings from embeddings: {settings.dict()}")
+        else:
+            # Load from environment variables or config file
+            settings = TxtAISettings.load()
+            logger.debug(f"Loaded TxtAI settings: {settings.dict()}")
+            app = settings.create_application()
         
-        app = settings.create_application()
         logger.debug("Created txtai application with configuration:")
         logger.debug(f"- Model path: {app.config.get('path')}")
         logger.debug(f"- Content storage: {app.config.get('content')}")

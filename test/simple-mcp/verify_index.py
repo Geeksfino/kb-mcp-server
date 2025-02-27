@@ -18,7 +18,7 @@ from txtai.app import Application
 def main():
     """Verify the txtai index state."""
     # Load the same configuration as the server
-    config_path = os.path.join(os.path.dirname(__file__), "simple", "simple.yml")
+    config_path = os.path.join(os.path.dirname(__file__), "./", "simple.yml")
     print(f"Loading configuration from: {config_path}")
     
     with open(config_path, "r") as f:
