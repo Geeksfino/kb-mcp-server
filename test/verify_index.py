@@ -9,6 +9,10 @@ import yaml
 import json
 import glob
 import struct
+
+# Set environment variable to avoid tokenizers warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 from txtai.app import Application
 
 def main():
@@ -177,10 +181,45 @@ def main():
         # Try a different search approach if possible
         try:
             print("\nTrying alternative direct query approach:")
-            if hasattr(app.embeddings, "data"):
-                print("  Embeddings data is accessible")
-                print(f"  Data length: {len(app.embeddings.data)}")
-                print(f"  Data preview: {app.embeddings.data[:5] if app.embeddings.data else 'Empty'}")
+            
+            # Test direct txtai API
+            print("\nTesting direct txtai API:")
+            # Create a fresh instance with test documents
+            test_app = Application({
+                "embeddings": {
+                    "path": "sentence-transformers/all-MiniLM-L6-v2",
+                    "content": True
+                },
+                "writable": True  # Enable index writing
+            })
+            
+            # No need to call configure again since we passed the config to the constructor
+            
+            # Add test documents
+            test_documents = [
+                {"id": "test1", "text": "This is test document 1"},
+                {"id": "test2", "text": "This is test document 2"},
+                {"id": "test3", "text": "This is test document 3"}
+            ]
+            
+            print(f"Adding {len(test_documents)} test documents")
+            test_app.add(test_documents)
+            test_app.index()
+            
+            # Test direct ID lookup
+            print("\nTesting direct ID lookup with fresh instance:")
+            for doc_id in ["test1", "test2", "test3"]:
+                # Try SQL query
+                sql_results = test_app.search(f"select * from txtai where id = '{doc_id}'")
+                print(f"  ID: {doc_id} -> ", end="")
+                if sql_results and len(sql_results) > 0:
+                    found_id = sql_results[0].get("id") if isinstance(sql_results[0], dict) else "unknown"
+                    if found_id == doc_id:
+                        print(f"Success! Found correct document")
+                    else:
+                        print(f"Error: Found wrong document with ID {found_id}")
+                else:
+                    print("No results")
         except Exception as e:
             print(f"Error accessing embeddings data: {e}")
     

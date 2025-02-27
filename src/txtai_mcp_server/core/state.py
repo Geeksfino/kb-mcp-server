@@ -34,10 +34,10 @@ def get_from_document_cache(doc_id: Any) -> Optional[str]:
     global _document_cache
     return _document_cache.get(doc_id)
 
+# Aliases for backward compatibility
 def add_document_to_cache(doc_id: str, text: str) -> None:
-    """Add document text to cache."""
-    global _document_cache
-    _document_cache[doc_id] = text
+    """Alias for add_to_document_cache for backward compatibility."""
+    add_to_document_cache(doc_id, text)
 
 def get_document_from_cache(doc_id: Any) -> Optional[str]:
     """Alias for get_from_document_cache for backward compatibility."""

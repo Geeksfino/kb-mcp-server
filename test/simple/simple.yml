@@ -3,9 +3,10 @@ content: true
 writable: true  # Enable index writing at the root level
 embeddings:
   path: sentence-transformers/nli-mpnet-base-v2  # Model path with prefix
-  storagetype: memory  # Keep document database in memory
-  storagepath: /Users/cliang/.txtai/embeddings  # Where to save document database if not in memory
-  gpu: true
   normalize: true
+  hybrid: true
+  gpu: true
+  storagetype: memory
+  storagepath: /Users/cliang/.txtai/embeddings
   writable: true
-  hybrid: true  # Enable hybrid search to match the reference notebook
+  content: true

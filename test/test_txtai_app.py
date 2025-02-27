@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-Direct test of txtai Embeddings API to understand document indexing behavior.
-This test uses the Embeddings class directly instead of the Application class.
+Test of txtai Application API to understand document indexing behavior.
+This test uses the Application class which wraps around the Embeddings class.
 """
 
 import os
@@ -11,7 +11,7 @@ import shutil
 # Set environment variable to avoid tokenizers warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from txtai import Embeddings
+from txtai.app import Application
 
 def main():
     # Load the same configuration
@@ -21,10 +21,6 @@ def main():
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     
-    # Extract embeddings configuration
-    embeddings_config = config.get("embeddings", {})
-    print(f"Embeddings configuration: {embeddings_config}")
-    
     # Get the index path from the config
     index_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), config.get("path", ".txtai/indexes/simple"))
     print(f"Index will be stored at: {index_path}")
@@ -32,15 +28,20 @@ def main():
     # Create the directory if it doesn't exist
     os.makedirs(index_path, exist_ok=True)
     
-    # Create Embeddings instance with path to save the index
-    embeddings = Embeddings(
-        path=embeddings_config.get("path", "sentence-transformers/nli-mpnet-base-v2"),
-        # Use the content setting from the config file
-        storagetype="sqlite",  # Use sqlite for persistent storage
-        storagepath=index_path,
-        hybrid=True,  # Enable hybrid search to match the Application API
-        content=True  # Explicitly enable content storage
-    )
+    # Update config to use sqlite storage
+    if "embeddings" in config:
+        # Set storage type to sqlite
+        config["embeddings"]["storagetype"] = "sqlite"
+        
+        # Set the storage path to the index path to match test_txtai_direct.py
+        config["embeddings"]["storagepath"] = index_path
+        
+        print(f"Updated config for document storage:")
+        print(f"  - Storage type: sqlite")
+        print(f"  - Storage path: {index_path}")
+    
+    # Create Application instance
+    app = Application(config)
     
     # Test documents
     test_documents = [
@@ -55,20 +56,20 @@ def main():
     # Create a mapping from document ID to index
     id_to_index = {doc["id"]: i for i, doc in enumerate(test_documents)}
     
-    # Create data in the format expected by Embeddings
-    # Embeddings expects (id, text, tags) format or just text
+    # Create data in the format expected by Application
+    # Convert to tuples: (id, text, metadata)
     data = [(doc["id"], doc["text"], None) for doc in test_documents]
     
-    # Index the data
-    print("\nIndexing data with Embeddings API directly:")
-    embeddings.index(data)
+    # Add documents and build the index
+    app.add(data)
+    print("\nIndexing data with Application API:")
+    app.index()
     
-    # Save the index to disk
-    print(f"Saving index to: {index_path}")
-    embeddings.save(index_path)
+    # The Application API will automatically save the index based on the config path
+    print(f"Index saved to: {index_path}")
     
     # Test search
-    print("\nTesting search with Embeddings API:")
+    print("\nTesting search with Application API:")
     test_queries = [
         "feel good story",
         "climate change",
@@ -84,17 +85,17 @@ def main():
     print("-" * 50)
     
     for query in test_queries:
-        # Search returns (id, score) tuples
-        results = embeddings.search(query, 1)
+        # Search returns results in various formats
+        results = app.search(query, 1)
         if results:
             # Handle different result formats
             if isinstance(results, list) and len(results) > 0:
-                if isinstance(results[0], tuple) and len(results[0]) == 2:
-                    # Format: [(id, score)]
-                    result_id = results[0][0]
-                elif isinstance(results[0], dict) and 'id' in results[0]:
+                if isinstance(results[0], dict) and 'id' in results[0]:
                     # Format: [{'id': id, 'score': score}]
                     result_id = results[0]['id']
+                elif isinstance(results[0], tuple) and len(results[0]) >= 2:
+                    # Format: [(id, score)]
+                    result_id = results[0][0]
                 else:
                     print(f"%-20s %s" % (query, f"Unknown result format: {results}"))
                     continue
@@ -112,9 +113,10 @@ def main():
             print("%-20s %s" % (query, "No results"))
     
     # Test direct ID lookup
-    print("\nTesting direct ID lookup with Embeddings API:")
+    # Since Application doesn't have direct ID lookup, we'll use our in-memory mapping
+    print("\nTesting direct ID lookup with Application API:")
     for doc_id in ["doc1", "doc2", "doc3", "doc4", "doc5", "doc6"]:
-        # Try to find the document by ID
+        # Try to find the document by ID in our data
         found = False
         for i, (id_, text, _) in enumerate(data):
             if id_ == doc_id:
@@ -126,7 +128,7 @@ def main():
             print(f"ID lookup for {doc_id}: Not found")
     
     # Test similarity search by ID
-    print("\nTesting similarity search by ID with Embeddings API:")
+    print("\nTesting similarity search by ID with Application API:")
     for doc_id in ["doc1", "doc2", "doc3", "doc4", "doc5", "doc6"]:
         # Find the document text for this ID
         doc_text = None
@@ -137,7 +139,7 @@ def main():
         
         if doc_text:
             # Get similar documents to this one using the text
-            similar = embeddings.search(doc_text, 3)
+            similar = app.search(doc_text, 3)
             print(f"Documents similar to {doc_id}:")
             
             for result in similar:
@@ -145,7 +147,7 @@ def main():
                 if isinstance(result, dict) and 'id' in result:
                     similar_id = result['id']
                     score = result.get('score', 0.0)
-                elif isinstance(result, tuple) and len(result) == 2:
+                elif isinstance(result, tuple) and len(result) >= 2:
                     similar_id, score = result
                 else:
                     print(f"  - Unknown result format: {result}")

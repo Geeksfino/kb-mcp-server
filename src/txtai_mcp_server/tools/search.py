@@ -134,28 +134,54 @@ def register_search_tools(mcp: FastMCP) -> None:
                         if text:
                             return [{"id": doc_id, "text": text, "score": 1.0}]
                         
-                        # If not in cache, try SQL with proper escaping
-                        safe_id = escape_sql_string(doc_id)
-                        # Use a more specific SQL query that ensures we get the exact ID match
-                        sql_query = f"select id, text from txtai where id = '{safe_id}' and text is not null"
-                        results = app.search(sql_query)
-                        if results and len(results) > 0:
-                            result = results[0]
-                            if isinstance(result, dict) and result.get("id") == doc_id:
-                                # Add to cache for next time
-                                add_document_to_cache(doc_id, result.get("text"))
-                                return [result]
-                        
-                        # If SQL fails, try backend directly
+                        # Try backend directly first since it's most reliable
                         if hasattr(app.embeddings, "backend"):
                             try:
                                 doc = app.embeddings.backend.get(doc_id)
                                 if doc:
-                                    return [{"id": doc_id, "text": doc, "score": 1.0}]
+                                    logger.info(f"Found document {doc_id} in backend")
+                                    # Handle case where doc might be a dict or other format
+                                    doc_text = doc.get('text') if isinstance(doc, dict) else str(doc)
+                                    # Add to cache for next time
+                                    add_to_document_cache(doc_id, doc_text)
+                                    return [{"id": doc_id, "text": doc_text, "score": 1.0}]
+                                else:
+                                    logger.warning(f"Document {doc_id} not found in backend")
                             except Exception as e:
-                                logger.warning(f"Backend lookup failed: {e}")
+                                logger.warning(f"Backend lookup failed for {doc_id}: {str(e)}")
+                                logger.debug(f"Backend lookup traceback: {traceback.format_exc()}")
+                        
+                        # If backend fails, try SQL with proper escaping
+                        safe_id = escape_sql_string(doc_id)
+                        # Use select * to get all fields and add debug logging
+                        sql_query = f"select * from txtai where id = '{safe_id}'"
+                        logger.info(f"Executing SQL query: {sql_query}")
+                        results = app.search(sql_query)
+                        logger.info(f"SQL query results: {results}")
+                        
+                        if results and len(results) > 0:
+                            result = results[0]
+                            logger.info(f"First result: {result}")
+                            if isinstance(result, dict):
+                                found_id = result.get("id")
+                                logger.info(f"Found ID: {found_id}, Expected ID: {doc_id}")
+                                if found_id == doc_id:
+                                    # Add to cache for next time
+                                    add_to_document_cache(doc_id, result.get("text"))
+                                    return [result]
+                            else:
+                                logger.warning(f"Result not in dict format: {result}")
+                        
+                        # If all lookups fail, try semantic search as last resort
+                        logger.warning(f"All direct lookups failed for {doc_id}, trying semantic search")
+                        results = app.search(doc_id, 1)  # Use the ID as a search term
+                        if results and len(results) > 0:
+                            result = results[0]
+                            if isinstance(result, dict) and result.get("id") == doc_id:
+                                return [result]
                 except Exception as e:
                     logger.warning(f"ID lookup failed: {e}")
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
                     # Don't return empty list yet, try semantic search as fallback
             
             # For wildcard searches, try multiple approaches
@@ -198,7 +224,34 @@ def register_search_tools(mcp: FastMCP) -> None:
             
             # For normal searches, use the embeddings search
             results = app.search(query, limit)
-            return results
+            
+            # Ensure each result has a text field
+            enhanced_results = []
+            for result in results:
+                if isinstance(result, dict):
+                    # If result doesn't have text field, try to get it from cache or backend
+                    if "id" in result and ("text" not in result or not result["text"]):
+                        doc_id = result["id"]
+                        # Try cache first
+                        text = get_document_from_cache(doc_id)
+                        if text:
+                            result["text"] = text
+                        # If not in cache, try backend
+                        elif hasattr(app.embeddings, "backend"):
+                            try:
+                                doc = app.embeddings.backend.get(doc_id)
+                                if doc:
+                                    doc_text = doc.get('text') if isinstance(doc, dict) else str(doc)
+                                    result["text"] = doc_text
+                                    # Add to cache for next time
+                                    add_to_document_cache(doc_id, doc_text)
+                            except Exception as e:
+                                logger.debug(f"Backend lookup failed for result enhancement: {e}")
+                    enhanced_results.append(result)
+                else:
+                    enhanced_results.append(result)
+            
+            return enhanced_results
             
         except Exception as e:
             logger.error(f"Failed to search: {e}")
@@ -206,90 +259,131 @@ def register_search_tools(mcp: FastMCP) -> None:
             raise RuntimeError(f"Failed to search: {str(e)}")
 
     @mcp.tool(
-        name="add_content",
-        description="[DEPRECATED] Add content to the search index. Use add_documents instead."
+        name="add_document",
+        description="Add a document to the search index."
     )
-    async def add_content(
+    async def add_document(
         ctx: Context,
         text: str,
-        metadata: Optional[Dict] = None
+        id: Optional[str] = None,
+        tags: Optional[str] = None,
+        metadata: Optional[str] = None
     ) -> Dict:
-        """[DEPRECATED] Add content to the search index.
-        
-        This tool is deprecated. Please use add_documents instead.
+        """Add a document to the search index.
         
         Args:
-            text: The text content to add
-            metadata: Optional metadata to associate with the content
+            text: Document text
+            id: Optional document ID (will be generated if not provided)
+            tags: Optional comma-separated tags
+            metadata: Optional JSON metadata
         """
         try:
-            logger.warning("add_content is deprecated. Please use add_documents instead.")
+            # Generate ID if not provided
+            if not id:
+                id = str(uuid.uuid4())
             
-            # Generate a document ID if not provided in metadata
-            doc_id = metadata.get("id") if metadata and "id" in metadata else str(uuid.uuid4())
+            # Parse tags if provided
+            tag_list = None
+            if tags:
+                tag_list = [tag.strip() for tag in tags.split(",")]
             
-            # Create a single document and use add_documents
+            # Parse metadata if provided
+            meta_dict = None
+            if metadata:
+                try:
+                    meta_dict = json.loads(metadata)
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid metadata JSON: {metadata}")
+            
+            # Create document object
             document = {
-                "id": doc_id,
+                "id": id,
                 "text": text
             }
             
-            if metadata:
-                document["metadata"] = metadata
+            if tag_list:
+                document["tags"] = tag_list
             
-            # Call add_documents with a single document
-            result = await add_documents(ctx, [document])
+            if meta_dict:
+                document["metadata"] = meta_dict
             
-            # Return a compatible result
+            # Get txtai app
+            app = get_txtai_app()
+            
+            # Add document to index
+            logger.info(f"Adding document: {document}")
+            app.add(document)
+            
+            # Add to document cache
+            add_to_document_cache(id, text)
+            
+            # Save index
+            if app.config.get("path"):
+                logger.info(f"Saving index to: {app.config.get('path')}")
+                app.index()
+            
             return {
                 "status": "success",
-                "id": doc_id,
-                "message": f"Added content with ID: {doc_id}"
+                "id": id
             }
-            
         except Exception as e:
-            logger.error(f"Failed to add content: {e}")
+            logger.error(f"Failed to add document: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise RuntimeError(f"Failed to add content: {str(e)}")
+            raise RuntimeError(f"Failed to add document: {str(e)}")
 
     @mcp.tool(
         name="add_documents",
-        description="Add documents to the search index."
+        description="Add multiple documents to the search index."
     )
     async def add_documents(
         ctx: Context,
-        documents: List[Dict[str, str]]
+        documents: List[Dict]
     ) -> Dict:
-        """Add documents to the search index.
+        """Add multiple documents to the search index.
         
         Args:
-            documents: List of documents to add, each with 'id' and 'text' fields
+            documents: List of document objects with at least "id" and "text" fields
         """
         try:
-            logger.info(f"Adding {len(documents)} documents to index")
+            # Get txtai app
             app = get_txtai_app()
             
-            # Add documents to txtai
-            formatted_docs = []
+            # Validate documents
+            valid_documents = []
             for doc in documents:
-                doc_id = doc.get("id")
-                text = doc.get("text")
-                if doc_id and text:
-                    # Format as dictionary for txtai Application
-                    formatted_docs.append({"id": doc_id, "text": text})
-                    # Add to cache
-                    from txtai_mcp_server.core.state import add_document_to_cache
-                    add_document_to_cache(doc_id, text)
+                if not isinstance(doc, dict):
+                    logger.warning(f"Skipping invalid document (not a dict): {doc}")
+                    continue
+                    
+                if "id" not in doc or "text" not in doc:
+                    logger.warning(f"Skipping document missing required fields: {doc}")
+                    continue
+                
+                valid_documents.append(doc)
+                
+                # Add to document cache
+                add_to_document_cache(doc["id"], doc["text"])
             
-            # Add documents and build the index
-            app.add(formatted_docs)
-            app.index()
+            if not valid_documents:
+                return {
+                    "status": "error",
+                    "message": "No valid documents provided"
+                }
+            
+            # Add documents to index
+            logger.info(f"Adding {len(valid_documents)} documents to index")
+            app.add(valid_documents)
+            
+            # Save index
+            if app.config.get("path"):
+                logger.info(f"Saving index to: {app.config.get('path')}")
+                app.index()
             
             return {
                 "status": "success",
-                "count": len(documents),
+                "count": len(valid_documents),
+                "ids": [doc["id"] for doc in valid_documents]
             }
-            
         except Exception as e:
             logger.error(f"Failed to add documents: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
