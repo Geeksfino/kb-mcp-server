@@ -157,6 +157,60 @@ See `config.example.yml` for examples of:
 4. Workflow configuration
 5. Cloud storage options
 
+## Docker
+
+### Running with Docker
+
+The MCP server can be easily run using Docker:
+
+```bash
+# Build the Docker image
+docker build -t txtai-mcp-server .
+
+# Run the container with default settings
+docker run -p 8000:8000 txtai-mcp-server
+
+# Run with custom port
+docker run -p 9000:9000 -e PORT=9000 txtai-mcp-server
+
+# Run with custom embeddings directory
+docker run -p 8000:8000 -v /path/to/embeddings:/data/embeddings -e EMBEDDINGS_PATH=/data/embeddings txtai-mcp-server
+
+# Run with embeddings tar.gz file
+docker run -p 8000:8000 -v /path/to/embeddings.tar.gz:/data/embeddings.tar.gz -e EMBEDDINGS_PATH=/data/embeddings.tar.gz txtai-mcp-server
+```
+
+### Using Docker Compose
+
+For a more convenient setup, use Docker Compose:
+
+1. Create a `.env` file with your configuration (see `.env.example`)
+2. Run the service:
+
+```bash
+# Start with default settings
+docker-compose up
+
+# Start with custom settings from .env file
+docker-compose up
+
+# Start with custom settings from command line
+PORT=9000 EMBEDDINGS_PATH=/data/custom-embeddings docker-compose up
+```
+
+### Environment Variables
+
+The Docker container supports the following environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| PORT | Server port | 8000 |
+| HOST | Server host | 0.0.0.0 |
+| TRANSPORT | Transport protocol (sse or stdio) | sse |
+| EMBEDDINGS_PATH | Path to embeddings directory or tar.gz file | /data/embeddings |
+| LOCAL_EMBEDDINGS_PATH | Local path to mount into container (docker-compose only) | ./embeddings |
+| CONTAINER_EMBEDDINGS_PATH | Container path where embeddings are mounted (docker-compose only) | /data/embeddings |
+
 ## Usage
 
 ### Starting the Server

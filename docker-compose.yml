@@ -3,15 +3,20 @@ services:
   txtai-mcp:
     build: .
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
     volumes:
       - txtai_data:/data
+      - ${LOCAL_EMBEDDINGS_PATH:-./embeddings}:${CONTAINER_EMBEDDINGS_PATH:-/data/embeddings}
     environment:
+      - PORT=${PORT:-8000}
+      - HOST=${HOST:-0.0.0.0}
+      - TRANSPORT=${TRANSPORT:-sse}
+      - EMBEDDINGS_PATH=${EMBEDDINGS_PATH:-/data/embeddings}
       - TXTAI_STORAGE_MODE=persistence
       - TXTAI_INDEX_PATH=/data/embeddings
-      - TXTAI_DATASET_ENABLED=true
-      - TXTAI_DATASET_NAME=web_questions
-      - TXTAI_DATASET_SPLIT=train
+      - TXTAI_DATASET_ENABLED=${TXTAI_DATASET_ENABLED:-true}
+      - TXTAI_DATASET_NAME=${TXTAI_DATASET_NAME:-web_questions}
+      - TXTAI_DATASET_SPLIT=${TXTAI_DATASET_SPLIT:-train}
 
 volumes:
   txtai_data:
