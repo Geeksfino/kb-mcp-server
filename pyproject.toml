@@ -21,6 +21,9 @@ dependencies = [
     "pydantic-settings>=2.0"
 ]
 
+[project.scripts]
+txtai-mcp-server = "txtai_mcp_server:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
