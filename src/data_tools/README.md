@@ -1,65 +1,106 @@
-# Data Tools for txtai
+# Knowledge Base System
 
-This package provides tools for loading and processing documents into txtai databases.
+A comprehensive knowledge base system for ingesting documents, generating embeddings, building a knowledge graph, and searching through documents using various search strategies.
 
-## Document Loader
+## Overview
 
-The document loader is a command-line tool that helps you load various document types into a txtai database. It supports:
+This system provides a command-line interface for building and searching a knowledge base:
 
-- PDF files (.pdf)
-- Word documents (.doc, .docx)
-- Text files (.txt)
-- Markdown files (.md)
+1. **Document Loading**: Ingest various document types (PDF, text, Markdown, HTML, Word) into a pipeline.
+2. **Embedding Generation**: Process the documents into embeddings for similarity search.
+3. **Knowledge Graph Construction**: Build a graph representation of document relationships.
+4. **Search Interface**: Search the knowledge base using different strategies.
 
-### Features
+## Command-Line Interface
 
-- Automatic text extraction from supported document types
-- Smart text chunking with configurable size and overlap
-- Batch processing for efficient database loading
-- Support for recursive directory processing
-- Progress tracking and error handling
+The system provides a command-line interface for building and searching the knowledge base:
 
-### Usage
+### Building the Knowledge Base
 
 ```bash
-python -m data_tools.document_loader --input <path> --db-url <url> [options]
-
-Required arguments:
-  --input PATH           Input file or directory path
-  --db-url URL          URL of the txtai database
-
-Optional arguments:
-  --chunk-size SIZE     Size of text chunks (default: 512)
-  --overlap SIZE        Overlap between chunks (default: 50)
-  --batch-size SIZE     Batch size for processing (default: 32)
-  --recursive           Recursively process directories
-  --verbose            Enable verbose logging
+python -m data_tools.cli build path/to/documents --recursive --build-graph --find-communities
 ```
 
-### Examples
+Options:
+- `--recursive`: Process directories recursively
+- `--extensions`: File extensions to process (e.g., `--extensions pdf txt md`)
+- `--output`: Output path for embeddings
+- `--build-graph`: Build knowledge graph
+- `--graph-path`: Path to save knowledge graph
+- `--find-communities`: Find communities in knowledge graph
+- `--config`: Path to configuration file
 
-1. Load a single PDF file:
+### Searching the Knowledge Base
+
 ```bash
-python -m data_tools.document_loader --input document.pdf --db-url http://localhost:8000
+python -m data_tools.cli search "your query" --search-type hybrid --limit 10
 ```
 
-2. Process a directory of documents recursively:
-```bash
-python -m data_tools.document_loader --input ./documents --db-url http://localhost:8000 --recursive
+Options:
+- `--search-type`: Type of search to perform:
+  - `similar`: Semantic search using only dense vectors (embeddings)
+  - `exact`: Keyword search using only sparse vectors (BM25)
+  - `hybrid`: Combined search using both dense and sparse vectors (default)
+  - `graph`: Graph-based search that finds related documents through connections
+- `--limit`: Maximum number of results to return (default: 5)
+- `--depth`: Maximum depth for graph traversal (for custom graph search, default: 2)
+- `--graph-path`: Path to knowledge graph (for graph search)
+- `--show-metadata`: Show document metadata
+- `--extract-answers`: Extract answers using QA
+- `--config`: Path to configuration file
+
+### Example Usage
+
+1. Build a knowledge base from a directory of documents:
+   ```bash
+   python -m data_tools.cli build ~/documents/research --recursive --extensions pdf txt md --build-graph
+   ```
+
+2. Search the knowledge base using hybrid search:
+   ```bash
+   python -m data_tools.cli search "What is machine learning?" --search-type hybrid --limit 5
+   ```
+
+3. Search using graph-based traversal:
+   ```bash
+   python -m data_tools.cli search "How does reinforcement learning work?" --search-type graph --depth 2
+   ```
+
+## Configuration
+
+The system can be configured using a YAML file or environment variables:
+
+```yaml
+# Example configuration
+path: ~/.txtai/embeddings
+content: true
+writable: true
+embeddings:
+  path: sentence-transformers/all-MiniLM-L6-v2
+  storagepath: ~/.txtai/embeddings
+  gpu: true
+  normalize: true
+  hybrid: true
+  writable: true
+graph:
+  similarity: 0.75
+  limit: 10
 ```
 
-3. Customize chunking parameters:
-```bash
-python -m data_tools.document_loader --input ./documents --db-url http://localhost:8000 --chunk-size 1024 --overlap 100
-```
+Environment variables:
+- `KB_CONFIG`: Path to configuration file
+- `KB_MODEL_PATH`: Path to embedding model
+- `KB_INDEX_PATH`: Path to store embeddings
+- `KB_MODEL_GPU`: Whether to use GPU for embeddings
+- `KB_HYBRID_SEARCH`: Whether to enable hybrid search
 
-## Development
+## Components
 
-The tool is built using txtai's pipeline and workflow systems. Key components:
+The system consists of the following components:
 
-- `document_loader.py`: Command-line interface
-- `loader_utils.py`: Core document processing functionality
+1. **DocumentLoader**: Handles the ingestion of various document types
+2. **DocumentProcessor**: Converts documents into embeddings for similarity search
+3. **KnowledgeGraph**: Builds a graph representation of document relationships
+4. **KnowledgeSearch**: Provides different search strategies against the knowledge base
 
-### Adding Support for New Document Types
-
-To add support for new document types, update the `SUPPORTED_EXTENSIONS` set in the `DocumentProcessor` class.
+These components are used internally by the CLI and can also be used programmatically if needed.

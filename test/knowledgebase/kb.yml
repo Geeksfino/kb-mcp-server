@@ -1,0 +1,25 @@
+path: .txtai/kb-test  # Where to save the index
+content: true  # Store document content
+writable: true  # Enable index writing
+
+# Embedding configuration
+embeddings:
+  path: sentence-transformers/nli-mpnet-base-v2  # Model path
+  normalize: true  # Normalize embeddings
+  hybrid: true  # Enable hybrid search
+  gpu: true  # Use GPU if available
+  storagetype: sqlite  # Storage type for better content storage
+  storagepath: .txtai/embeddings/kb-test
+  writable: true
+  content: true  # Store document content
+  
+  # Knowledge graph
+  graph:
+    backend: networkx  # Graph backend
+    batchsize: 256  # Batch query size
+    limit: 5  # Max connections per node
+    minscore: 0.6  # Minimum similarity score
+    approximate: true  # Only run queries for nodes without edges
+    topics:
+      algorithm: louvain  # Community detection algorithm
+      terms: 4  # Number of terms for topic labels

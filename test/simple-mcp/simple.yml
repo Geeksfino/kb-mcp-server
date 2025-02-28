@@ -7,6 +7,6 @@ embeddings:
   hybrid: true
   gpu: true
   storagetype: memory
-  storagepath: /Users/cliang/.txtai/embeddings
+  storagepath: .txtai/embeddings/simple
   writable: true
   content: true

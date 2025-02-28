@@ -1,22 +1,32 @@
 version: '3.8'
 services:
   txtai-mcp:
-    build: .
+    build:
+      context: .
+      args:
+        - HF_TRANSFORMERS_MODELS=${HF_TRANSFORMERS_MODELS:-}
+        - HF_SENTENCE_TRANSFORMERS_MODELS=${HF_SENTENCE_TRANSFORMERS_MODELS:-}
+        - HF_CACHE_DIR=${HF_CACHE_DIR:-}
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:
       - txtai_data:/data
       - ${LOCAL_EMBEDDINGS_PATH:-./embeddings}:${CONTAINER_EMBEDDINGS_PATH:-/data/embeddings}
+      # Optional: Mount the Hugging Face cache directory for runtime access
+      - ${HF_CACHE_DIR:-~/.cache/huggingface/hub}:/root/.cache/huggingface/hub:ro
     environment:
       - PORT=${PORT:-8000}
       - HOST=${HOST:-0.0.0.0}
       - TRANSPORT=${TRANSPORT:-sse}
       - EMBEDDINGS_PATH=${EMBEDDINGS_PATH:-/data/embeddings}
+      - CONFIG_FILE=${CONFIG_FILE:-config.yml}
       - TXTAI_STORAGE_MODE=persistence
       - TXTAI_INDEX_PATH=/data/embeddings
       - TXTAI_DATASET_ENABLED=${TXTAI_DATASET_ENABLED:-true}
       - TXTAI_DATASET_NAME=${TXTAI_DATASET_NAME:-web_questions}
       - TXTAI_DATASET_SPLIT=${TXTAI_DATASET_SPLIT:-train}
+      - HF_TRANSFORMERS_MODELS=${HF_TRANSFORMERS_MODELS:-}
+      - HF_SENTENCE_TRANSFORMERS_MODELS=${HF_SENTENCE_TRANSFORMERS_MODELS:-}
 
 volumes:
   txtai_data:

@@ -161,11 +161,29 @@ See `config.example.yml` for examples of:
 
 ### Running with Docker
 
-The MCP server can be easily run using Docker:
+The MCP server can be easily run using Docker. We use the official txtai image as a base:
 
 ```bash
-# Build the Docker image
+# Build the Docker image (CPU version)
 docker build -t txtai-mcp-server .
+
+# Build with GPU support (requires modifying the FROM line in Dockerfile)
+# FROM neuml/txtai-gpu:latest
+docker build -t txtai-mcp-server-gpu .
+
+# Build with pre-cached Hugging Face models
+docker build \
+  --build-arg HF_TRANSFORMERS_MODELS="bert-base-uncased,distilbert-base-uncased" \
+  --build-arg HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
+  -t txtai-mcp-server-with-models .
+
+# Build with pre-cached models using the host's Hugging Face cache
+# This will avoid downloading models that are already cached on the host
+docker build \
+  --build-arg HF_TRANSFORMERS_MODELS="bert-base-uncased,distilbert-base-uncased" \
+  --build-arg HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
+  --build-arg HF_CACHE_DIR="$HOME/.cache/huggingface/hub" \
+  -t txtai-mcp-server-with-models .
 
 # Run the container with default settings
 docker run -p 8000:8000 txtai-mcp-server
@@ -196,6 +214,142 @@ docker-compose up
 
 # Start with custom settings from command line
 PORT=9000 EMBEDDINGS_PATH=/data/custom-embeddings docker-compose up
+
+# Start with custom config file
+LOCAL_CONFIG_PATH=./my_config.yml CONFIG_FILE=my_config.yml docker-compose up
+
+# Start with pre-cached Hugging Face models
+HF_TRANSFORMERS_MODELS="bert-base-uncased,roberta-base" \
+HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
+docker-compose up --build
+
+# Start with pre-cached models using the host's Hugging Face cache
+HF_TRANSFORMERS_MODELS="bert-base-uncased,roberta-base" \
+HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
+HF_CACHE_DIR="$HOME/.cache/huggingface/hub" \
+docker-compose up --build
+```
+
+## Knowledge Management Tools
+
+This project includes powerful data ingestion and knowledge graph tools for building AI applications with rich contextual understanding.
+
+### Configuration
+
+The data tools use txtai's Application and YAML configuration system. Create a `config.yaml` file:
+
+```yaml
+# Basic configuration
+embeddings:
+  path: ~/.txtai/embeddings
+  content: true
+  contentlength: 32768
+  method: transformers
+  transforms:
+    - lowercase
+    - strip
+  score: bm25
+  batch: 5000
+  
+# Vector embedding model  
+pipeline:
+  embedding:
+    path: sentence-transformers/all-MiniLM-L6-v2
+
+# Document ingestion
+document:
+  reader:
+    path: txtai.reader.PDFReader
+  splitter:
+    path: txtai.splitter.Splitter
+    params:
+      chunking:
+        size: 512
+        overlap: 64
+
+# Knowledge graph settings      
+graph:
+  similarity: 0.75
+  limit: 10
+
+# Optional NLP pipelines
+pipelines:
+  ner:
+    path: txtai.pipeline.HFEntity
+    params:
+      model: dslim/bert-base-NER
+```
+
+### Document Ingestion
+
+Ingest documents into the knowledge base:
+
+```bash
+# Process a directory of documents (recursive)
+python -m src.data_tools.cli --config config.yaml ingest directory /path/to/documents --recursive
+
+# Process a single file
+python -m src.data_tools.cli --config config.yaml ingest file /path/to/document.pdf
+
+# Process a HuggingFace dataset
+python -m src.data_tools.cli --config config.yaml ingest dataset "dataset_name" --split train --text-field text
+```
+
+### Knowledge Graph
+
+Build a knowledge graph from the ingested documents:
+
+```bash
+# Build a semantic knowledge graph
+python -m src.data_tools.cli --config config.yaml graph --visualize
+
+# Detect communities in the knowledge graph
+python -m src.data_tools.cli --config config.yaml graph --detect-communities --visualize
+
+# Customize graph parameters
+python -m src.data_tools.cli --config config.yaml graph --min-similarity 0.8 --max-connections 15
+```
+
+### Semantic Search
+
+Search documents with semantic understanding:
+
+```bash
+# Basic semantic search
+python -m src.data_tools.cli --config config.yaml search "your search query"
+
+# Graph-enhanced hybrid search
+python -m src.data_tools.cli --config config.yaml search "your search query" --use-graph --context
+
+# Customize search parameters
+python -m src.data_tools.cli --config config.yaml search "your search query" --use-graph --graph-weight 0.7 --depth 2 --limit 10
+```
+
+### Programmatic Usage
+
+You can also use the data tools in your own Python code:
+
+```python
+from data_tools.config import load_application
+from data_tools.loader_utils import DocumentLoader
+from data_tools.knowledge_graph import KnowledgeGraph
+
+# Load application from config
+app = load_application("config.yaml")
+
+# Index documents
+loader = DocumentLoader(app=app)
+loader.process_directory("/path/to/documents", recursive=True)
+
+# Build knowledge graph
+kg = KnowledgeGraph(app=app)
+kg.build_semantic_graph()
+
+# Perform hybrid search
+results = kg.hybrid_search("your search query", limit=5, graph_weight=0.6)
+
+# Generate context for a query
+context = kg.generate_context("your query", max_results=3, max_length=1000)
 ```
 
 ### Environment Variables
