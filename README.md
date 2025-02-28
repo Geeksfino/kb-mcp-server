@@ -365,6 +365,165 @@ The Docker container supports the following environment variables:
 | LOCAL_EMBEDDINGS_PATH | Local path to mount into container (docker-compose only) | ./embeddings |
 | CONTAINER_EMBEDDINGS_PATH | Container path where embeddings are mounted (docker-compose only) | /data/embeddings |
 
+## Knowledge Graph and RAG
+
+The system now includes advanced knowledge graph and Retrieval Augmented Generation (RAG) capabilities.
+
+### Knowledge Graph Features
+
+- **Multiple Graph Building Approaches**:
+  - **Semantic Graph Builder**: Creates connections based on semantic similarity
+  - **Entity Graph Builder**: Extracts entities and relationships using LLMs
+  - **Hybrid Graph Builder**: Combines both semantic and entity approaches
+
+- **Graph Traversal and Querying**:
+  - Path-based traversal with customizable hop limits
+  - Cypher-like query language for complex path expressions
+  - Community detection for identifying related content clusters
+
+- **Visualization**:
+  - Static graph visualization with multiple layout algorithms
+  - Interactive HTML-based visualizations
+  - Path and community visualization
+
+### RAG Pipeline Features
+
+- **Flexible Retrieval Methods**:
+  - **Vector Retrieval**: Traditional embedding-based similarity search
+  - **Graph Retrieval**: Retrieval based on graph relationships
+  - **Path Retrieval**: Advanced retrieval using graph traversal paths
+
+- **Citation Generation**:
+  - Automatic citation of sources used in generation
+  - Verification of generated content against source material
+  - Coverage metrics for response verification
+
+### CLI Usage Examples
+
+#### Building a Knowledge Graph
+
+```bash
+# Build a semantic graph from documents in a directory
+kb graph-build --input /path/to/documents --type semantic --output graph.pkl
+
+# Build an entity-based graph with custom settings
+kb graph-build --input /path/to/documents --type entity --similarity 0.8 --max-connections 10 --model "llm-model-name"
+
+# Visualize the graph after building
+kb graph-build --input /path/to/documents --visualize graph.html
+```
+
+#### Traversing a Knowledge Graph
+
+```bash
+# Simple traversal with a query
+kb graph-traverse "your query" --input graph.pkl
+
+# Advanced traversal with a path query
+kb graph-traverse "your query" --path-query "(a)-[r]->(b)" --max-hops 3 --limit 5
+
+# Visualize traversal results
+kb graph-traverse "your query" --visualize path.html
+```
+
+#### Visualizing a Knowledge Graph
+
+```bash
+# Create an interactive HTML visualization
+kb graph-visualize --input graph.pkl --output graph.html
+
+# Create a static visualization with custom layout
+kb graph-visualize --input graph.pkl --output graph.png --layout kamada_kawai --node-size 500 --font-size 10
+
+# Visualize with community detection
+kb graph-visualize --input graph.pkl --output communities.html --community-detection
+```
+
+#### Using the RAG Pipeline
+
+```bash
+# Simple RAG with vector retrieval
+kb rag "your question" --retriever vector --model "llm-model-name"
+
+# Graph-based RAG
+kb rag "your question" --retriever graph --graph graph.pkl
+
+# Path-based RAG with custom path expression
+kb rag "your question" --retriever path --graph graph.pkl --path-expression "(a)-[r]->(b)"
+
+# RAG with citations
+kb rag "your question" --retriever vector --citations
+```
+
+### Python API Examples
+
+```python
+from data_tools.graph_builder import create_graph_builder
+from data_tools.graph_traversal import GraphTraversal, PathQuery
+from data_tools.rag import RAGPipeline
+from data_tools.visualization import GraphVisualizer, VisualizationOptions
+
+# Create a graph builder
+builder = create_graph_builder("semantic", embeddings, {
+    "similarity_threshold": 0.75,
+    "max_connections": 5
+})
+
+# Build a graph
+graph = builder.build(documents)
+builder.save("graph.pkl")
+
+# Create a graph traversal
+traversal = GraphTraversal(graph, {
+    "max_path_length": 3,
+    "max_paths": 10
+})
+
+# Query paths
+paths = traversal.query_paths("your query")
+
+# Create a path query
+query = PathQuery("(a)-[r]->(b)")
+paths = traversal.query_paths("your query", query)
+
+# Create a RAG pipeline
+pipeline = RAGPipeline(embeddings, {
+    "retriever": "vector",
+    "generator": {
+        "model": "model-name",
+        "max_tokens": 1024
+    },
+    "citation": {
+        "enabled": True
+    }
+})
+
+# Generate a response
+response = pipeline.generate("your question")
+
+# Generate a response with citations
+result = pipeline.generate_with_citations("your question")
+print(result["response"])
+print(result["citations"])
+print(result["verification"])
+
+# Visualize a graph
+visualizer = GraphVisualizer(graph, VisualizationOptions({
+    "layout": "spring",
+    "node_size": 750,
+    "font_size": 8
+}))
+
+# Create static visualization
+visualizer.visualize_graph("graph.png")
+
+# Create interactive HTML visualization
+visualizer.export_to_html("graph.html")
+
+# Visualize a path
+visualizer.visualize_path(paths[0], "path.png")
+```
+
 ## Usage
 
 ### Starting the Server

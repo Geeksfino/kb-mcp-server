@@ -2,12 +2,19 @@
 
 from .loader import DocumentLoader
 from .processor import DocumentProcessor
-from .kg import KnowledgeGraph
-from .search import KnowledgeSearch
+from .graph_builder import SemanticGraphBuilder, EntityGraphBuilder, HybridGraphBuilder
+from .graph_traversal import GraphTraversal
+from .rag import RAGPipeline, VectorRetriever, GraphRetriever, PathRetriever
 
 __all__ = [
     "DocumentLoader",
     "DocumentProcessor",
-    "KnowledgeGraph",
-    "KnowledgeSearch"
+    "SemanticGraphBuilder",
+    "EntityGraphBuilder", 
+    "HybridGraphBuilder",
+    "GraphTraversal",
+    "RAGPipeline",
+    "VectorRetriever",
+    "GraphRetriever",
+    "PathRetriever"
 ]
