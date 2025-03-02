@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Union, Any, Tuple, Set
 
 import networkx as nx
 import numpy as np
+from txtai.embeddings import Embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +25,71 @@ class GraphTraversal:
     This approach is based on Notebook 58 (Advanced RAG with graph path traversal).
     """
 
-    def __init__(self, graph: nx.Graph, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the GraphTraversal.
 
         Args:
-            graph: NetworkX graph
+            embeddings: txtai embeddings instance with graph component
             config: Configuration dictionary
         """
-        self.graph = graph
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            raise ValueError("Embeddings instance must have a graph component")
+        
+        self.embeddings = embeddings
+        self.graph = embeddings.graph
+        # Access the NetworkX backend for operations not available in txtai's graph API
+        self.graph_backend = self.graph.backend if hasattr(self.graph, 'backend') else None
         self.config = config or {}
         
         # Configuration parameters
         self.max_path_length = self.config.get("max_path_length", 3)
         self.max_paths = self.config.get("max_paths", 10)
+
+    def traverse(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Traverse the graph based on a query.
+        
+        Args:
+            query: Query string
+            limit: Maximum number of results
+            
+        Returns:
+            List of results with path and score
+        """
+        # Use txtai's search to find the starting node
+        search_results = self.embeddings.search(query, limit=limit)
+        
+        if not search_results:
+            logger.warning(f"No results found for query: {query}")
+            return []
+        
+        results = []
+        for result in search_results:
+            # Get the ID of the result
+            node_id = result["id"] if "id" in result else str(result.get("id", ""))
+            
+            # Find paths from this node
+            paths = self.find_paths_from_node(node_id)
+            
+            # Add paths to results
+            for path in paths:
+                path_text = []
+                for node in path:
+                    # Get the text for each node in the path
+                    node_text = self.graph.attribute(node, "text")
+                    if node_text:
+                        path_text.append(node_text)
+                
+                results.append({
+                    "path": path,
+                    "score": result.get("score", 0.0),
+                    "text": " ".join(path_text) if path_text else ""
+                })
+        
+        # Sort by score and limit results
+        results = sorted(results, key=lambda x: x["score"], reverse=True)
+        return results[:limit]
 
     def query_paths(self, query: str, path_expression: Optional[str] = None) -> List[List[str]]:
         """
@@ -53,7 +105,7 @@ class GraphTraversal:
         if path_expression:
             # Use PathQuery to execute the query
             path_query = PathQuery(path_expression)
-            return path_query.execute(self.graph)
+            return path_query.execute(self.graph_backend)
         else:
             # Try to infer start and end nodes from query
             start_nodes = self._find_nodes_by_query(query)
@@ -70,7 +122,7 @@ class GraphTraversal:
     
     def _find_nodes_by_query(self, query: str) -> List[str]:
         """
-        Find nodes that match a query.
+        Find nodes that match a query using txtai search.
 
         Args:
             query: Query string
@@ -78,14 +130,9 @@ class GraphTraversal:
         Returns:
             List of node IDs
         """
-        # Simple string matching (can be enhanced with embeddings)
-        matches = []
-        for node in self.graph.nodes():
-            node_str = str(node)
-            if query.lower() in node_str.lower():
-                matches.append(node)
-        
-        return matches
+        # Use txtai's search functionality
+        results = self.embeddings.search(query, limit=5)
+        return [result["id"] if "id" in result else str(result.get("id", "")) for result in results]
     
     def find_paths(self, start_node: str, end_node: str, max_hops: Optional[int] = None) -> List[List[str]]:
         """
@@ -102,13 +149,17 @@ class GraphTraversal:
         if max_hops is None:
             max_hops = self.max_path_length
         
-        # Check if nodes exist
-        if start_node not in self.graph or end_node not in self.graph:
+        # Check if nodes exist by trying to get their neighbors
+        try:
+            # If the node doesn't exist, this will raise an exception
+            self.graph.neighbors(start_node)
+            self.graph.neighbors(end_node)
+        except:
             return []
         
-        # Find all simple paths
+        # Use the NetworkX backend for path finding
         try:
-            paths = list(nx.all_simple_paths(self.graph, start_node, end_node, cutoff=max_hops))
+            paths = list(nx.all_simple_paths(self.graph_backend, start_node, end_node, cutoff=max_hops))
             return paths[:self.max_paths]
         except nx.NetworkXNoPath:
             return []
@@ -128,7 +179,10 @@ class GraphTraversal:
             max_hops = self.max_path_length
         
         # Check if node exists
-        if start_node not in self.graph:
+        try:
+            # If the node doesn't exist, this will raise an exception
+            self.graph.neighbors(start_node)
+        except:
             return []
         
         # BFS to find paths
@@ -148,7 +202,7 @@ class GraphTraversal:
             if depth >= max_hops:
                 continue
             
-            # Explore neighbors
+            # Explore neighbors using txtai's graph API
             for neighbor in self.graph.neighbors(current):
                 if neighbor not in visited:
                     visited.add(neighbor)
@@ -163,13 +217,13 @@ class GraphTraversal:
         Returns:
             Dictionary mapping node IDs to centrality scores
         """
-        # Use eigenvector centrality
+        # Use eigenvector centrality via NetworkX backend
         try:
-            centrality = nx.eigenvector_centrality(self.graph)
+            centrality = nx.eigenvector_centrality(self.graph_backend)
             return dict(sorted(centrality.items(), key=lambda x: x[1], reverse=True))
         except nx.PowerIterationFailedConvergence:
             logger.warning("Eigenvector centrality failed to converge. Using degree centrality.")
-            centrality = nx.degree_centrality(self.graph)
+            centrality = nx.degree_centrality(self.graph_backend)
             return dict(sorted(centrality.items(), key=lambda x: x[1], reverse=True))
     
     def community_detection(self) -> List[Set[str]]:
@@ -180,10 +234,10 @@ class GraphTraversal:
             List of communities (each community is a set of node IDs)
         """
         # Convert to undirected graph if needed
-        if isinstance(self.graph, nx.DiGraph):
-            G = self.graph.to_undirected()
+        if isinstance(self.graph_backend, nx.DiGraph):
+            G = self.graph_backend.to_undirected()
         else:
-            G = self.graph
+            G = self.graph_backend
         
         # Use Louvain method for community detection
         try:
@@ -212,17 +266,21 @@ class GraphTraversal:
         Returns:
             Dictionary with node information
         """
-        if node_id not in self.graph:
+        if not self.graph.exists(node_id):
             return {}
         
-        # Get node attributes
-        node_info = dict(self.graph.nodes[node_id])
+        # Get node attributes using txtai's graph API
+        node_info = {}
+        for attr in ["text", "id", "title"]:
+            value = self.graph.attribute(node_id, attr)
+            if value:
+                node_info[attr] = value
         
-        # Add degree information
-        node_info["degree"] = self.graph.degree(node_id)
-        if isinstance(self.graph, nx.DiGraph):
-            node_info["in_degree"] = self.graph.in_degree(node_id)
-            node_info["out_degree"] = self.graph.out_degree(node_id)
+        # Add degree information from NetworkX backend
+        node_info["degree"] = self.graph_backend.degree(node_id)
+        if isinstance(self.graph_backend, nx.DiGraph):
+            node_info["in_degree"] = self.graph_backend.in_degree(node_id)
+            node_info["out_degree"] = self.graph_backend.out_degree(node_id)
         
         # Add centrality
         centrality = self.centrality_analysis()
@@ -241,11 +299,11 @@ class GraphTraversal:
         Returns:
             Dictionary with edge information
         """
-        if not self.graph.has_edge(source, target):
+        if not self.graph_backend.has_edge(source, target):
             return {}
         
-        # Get edge attributes
-        edge_info = dict(self.graph[source][target])
+        # Get edge attributes from NetworkX backend
+        edge_info = dict(self.graph_backend[source][target])
         
         return edge_info
 

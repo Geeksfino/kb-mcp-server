@@ -86,17 +86,21 @@ class VectorRetriever(Retriever):
 class GraphRetriever(Retriever):
     """Retrieves context based on graph relationships."""
 
-    def __init__(self, embeddings: Embeddings, graph: nx.Graph, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the GraphRetriever.
 
         Args:
-            embeddings: txtai Embeddings instance
-            graph: NetworkX graph
+            embeddings: txtai Embeddings instance with graph component
             config: Configuration dictionary
         """
         self.embeddings = embeddings
-        self.graph = graph
+        
+        # Check if embeddings has a graph component
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            raise ValueError("Embeddings instance must have a graph component")
+        
+        self.graph = embeddings.graph
         self.config = config or {}
         
         # Configuration parameters
@@ -104,7 +108,7 @@ class GraphRetriever(Retriever):
         self.max_hops = self.config.get("max_hops", 2)
         
         # Create graph traversal
-        self.traversal = GraphTraversal(graph, {"max_path_length": self.max_hops})
+        self.traversal = GraphTraversal(embeddings, {"max_path_length": self.max_hops})
 
     def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
         """
@@ -125,34 +129,49 @@ class GraphRetriever(Retriever):
         
         # First, find seed nodes using vector similarity
         seed_results = self.embeddings.search(query, limit=5)
-        seed_ids = [r["id"] for r in seed_results]
+        seed_ids = [r["id"] if "id" in r else str(r.get("id", "")) for r in seed_results]
         
         # Then, find nodes connected to seed nodes
         context_ids = set()
         for seed_id in seed_ids:
-            if seed_id in self.graph:
+            try:
+                # Check if node exists by trying to get its neighbors
+                self.graph.neighbors(seed_id)
+                
                 # Find paths from seed node
                 paths = self.traversal.find_paths_from_node(seed_id, max_hops=max_hops)
                 
                 # Add all nodes in paths to context
                 for path in paths:
                     context_ids.update(path)
+            except:
+                # Node doesn't exist, skip it
+                continue
         
         # Retrieve document data for context nodes
         context = []
         for node_id in context_ids:
-            if node_id in self.graph:
-                node_data = dict(self.graph.nodes[node_id])
+            try:
+                # Check if node exists by trying to get its attributes
+                # Get node attributes using txtai's graph API
+                node_data = {}
+                for attr in ["text", "id", "title"]:
+                    value = self.graph.attribute(node_id, attr)
+                    if value:
+                        node_data[attr] = value
+                
                 if "text" in node_data:
                     context.append(node_data)
+            except:
+                # Node doesn't exist, skip it
+                continue
         
-        # Sort by relevance to query (if available)
-        if hasattr(self.embeddings, "similarity"):
-            for doc in context:
-                if "text" in doc:
-                    doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
-            
-            context.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # Sort by relevance to query
+        for doc in context:
+            if "text" in doc:
+                doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
+        
+        context.sort(key=lambda x: x.get("score", 0), reverse=True)
         
         return context[:limit]
 
@@ -160,24 +179,28 @@ class GraphRetriever(Retriever):
 class PathRetriever(Retriever):
     """Retrieves context based on path traversal."""
 
-    def __init__(self, embeddings: Embeddings, graph: nx.Graph, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the PathRetriever.
 
         Args:
-            embeddings: txtai Embeddings instance
-            graph: NetworkX graph
+            embeddings: txtai Embeddings instance with graph component
             config: Configuration dictionary
         """
         self.embeddings = embeddings
-        self.graph = graph
+        
+        # Check if embeddings has a graph component
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            raise ValueError("Embeddings instance must have a graph component")
+        
+        self.graph = embeddings.graph
         self.config = config or {}
         
         # Configuration parameters
         self.limit = self.config.get("limit", 10)
         
         # Create graph traversal
-        self.traversal = GraphTraversal(graph)
+        self.traversal = GraphTraversal(embeddings)
 
     def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
         """
@@ -207,20 +230,95 @@ class PathRetriever(Retriever):
         # Retrieve document data for context nodes
         context = []
         for node_id in context_ids:
-            if node_id in self.graph:
-                node_data = dict(self.graph.nodes[node_id])
+            try:
+                # Check if node exists by trying to get its attributes
+                # Get node attributes using txtai's graph API
+                node_data = {}
+                for attr in ["text", "id", "title"]:
+                    value = self.graph.attribute(node_id, attr)
+                    if value:
+                        node_data[attr] = value
+                
                 if "text" in node_data:
                     context.append(node_data)
+            except:
+                # Node doesn't exist, skip it
+                continue
         
-        # Sort by relevance to query (if available)
-        if hasattr(self.embeddings, "similarity"):
-            for doc in context:
-                if "text" in doc:
-                    doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
-            
-            context.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # Sort by relevance to query
+        for doc in context:
+            if "text" in doc:
+                doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
+        
+        context.sort(key=lambda x: x.get("score", 0), reverse=True)
         
         return context[:limit]
+
+
+class ExactRetriever(Retriever):
+    """Retrieves context based on exact text matching."""
+
+    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize the ExactRetriever.
+
+        Args:
+            embeddings: txtai Embeddings instance
+            config: Configuration dictionary
+        """
+        self.embeddings = embeddings
+        self.config = config or {}
+        
+        # Configuration parameters
+        self.limit = self.config.get("limit", 10)
+        self.case_sensitive = self.config.get("case_sensitive", False)
+
+    def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant context for a query using exact text matching.
+
+        Args:
+            query: Query string
+            **kwargs: Additional arguments for retrieval
+                - limit: Maximum number of results to return
+                - case_sensitive: Whether to perform case-sensitive matching
+
+        Returns:
+            List of context documents
+        """
+        # Override config with kwargs if provided
+        limit = kwargs.get("limit", self.limit)
+        case_sensitive = kwargs.get("case_sensitive", self.case_sensitive)
+        
+        # First try vector search to get documents that might contain the query
+        vector_retriever = VectorRetriever(self.embeddings)
+        results = vector_retriever.retrieve(query, limit=limit * 2)  # Get more results to filter
+        
+        # Filter results for exact matches
+        exact_matches = []
+        for result in results:
+            if "text" in result and result["text"]:
+                # Apply case sensitivity
+                doc_text = result["text"] if case_sensitive else result["text"].lower()
+                search_query = query if case_sensitive else query.lower()
+                
+                # Check for exact match
+                if search_query in doc_text:
+                    # Boost the score for exact matches
+                    result["score"] = min(1.0, result["score"] * 1.5)  # Boost score but cap at 1.0
+                    exact_matches.append(result)
+                    
+                    # Stop if we've reached the limit
+                    if len(exact_matches) >= limit:
+                        break
+        
+        # If we found exact matches, return them
+        if exact_matches:
+            return exact_matches
+            
+        # Otherwise, fall back to vector search results
+        logger.info("No exact matches found, falling back to vector search")
+        return results[:limit]
 
 
 class Generator:
@@ -285,14 +383,12 @@ context: {context_text}
 """
         else:
             # Create a default prompt
-            prompt = f"""<|im_start|>system
-You are a friendly assistant. You answer questions from users.<|im_end|>
-<|im_start|>user
+            prompt = f"""You are a friendly assistant. You answer questions from users.
+
 Answer the following question using only the context below. Only include information specifically discussed.
 
 question: {query}
-context: {context_text} <|im_end|>
-<|im_start|>assistant
+context: {context_text}  
 """
         
         # Generate response
@@ -459,12 +555,14 @@ class RAGPipeline:
             if self.graph is None:
                 logger.warning("Graph not available. Falling back to vector retriever.")
                 return VectorRetriever(self.embeddings, self.config)
-            return GraphRetriever(self.embeddings, self.graph, self.config)
+            return GraphRetriever(self.embeddings, self.config)
         elif retriever_type == "path":
             if self.graph is None:
                 logger.warning("Graph not available. Falling back to vector retriever.")
                 return VectorRetriever(self.embeddings, self.config)
-            return PathRetriever(self.embeddings, self.graph, self.config)
+            return PathRetriever(self.embeddings, self.config)
+        elif retriever_type == "exact":
+            return ExactRetriever(self.embeddings, self.config)
         else:
             raise ValueError(f"Unknown retriever type: {retriever_type}")
 

@@ -34,17 +34,19 @@ class DocumentLoader:
     # File extensions that require Textractor/Tika (complex formats)
     COMPLEX_FORMATS = {'.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'}
     
-    def __init__(self, app: Application):
+    def __init__(self, app: Optional[Application] = None):
         """
-        Initialize the DocumentLoader with a txtai Application.
+        Initialize the DocumentLoader.
         
         Args:
-            app: A configured txtai Application instance
+            app: Optional txtai Application instance. If provided, will use app's configuration.
         """
         self.app = app
         
-        # Extract processor configuration from app config
-        self.processor_config = self.app.config.get("processor", {})
+        # Extract processor configuration from app config if available
+        self.processor_config = {}
+        if app:
+            self.processor_config = app.config.get("processor", {})
         
         # Set up segmentation parameters
         self.min_length = self.processor_config.get("minlength", 100)

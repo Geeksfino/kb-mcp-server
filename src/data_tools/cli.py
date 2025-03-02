@@ -19,16 +19,15 @@ from txtai.pipeline import Extractor
 from data_tools.loader import DocumentLoader
 
 # Import graph components
-from data_tools.graph_builder import SemanticGraphBuilder, EntityGraphBuilder, HybridGraphBuilder
 from data_tools.graph_traversal import GraphTraversal
 from data_tools.visualization import GraphVisualizer, VisualizationOptions
 
 # Import RAG components
-from data_tools.rag import RAGPipeline
-from data_tools.rag import VectorRetriever, GraphRetriever, PathRetriever
+from data_tools.rag import RAGPipeline, VectorRetriever, GraphRetriever, PathRetriever, ExactRetriever
 
 # Import settings
 from data_tools.settings import Settings
+from data_tools.processor import DocumentProcessor
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -75,9 +74,9 @@ def find_config_file() -> Optional[str]:
     
     return None
 
-def create_application(config_path=None):
+def create_application(config_path: Optional[str] = None) -> Application:
     """
-    Create a txtai Application with the given configuration.
+    Create a txtai application with the specified configuration.
     
     Args:
         config_path: Path to configuration file
@@ -85,30 +84,56 @@ def create_application(config_path=None):
     Returns:
         txtai.app.Application: Application instance
     """
-    # Get settings
-    settings = Settings()
-    
     # Use provided config if available
-    if config_path and os.path.exists(config_path):
-        logger.info(f"Loading configuration from {config_path}")
-        return Application(config_path)
+    if config_path:
+        # Convert to absolute path if it's a relative path
+        if not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+        
+        if os.path.exists(config_path):
+            logger.info(f"Loading configuration from {config_path}")
+            try:
+                # Create application directly from YAML file path
+                app = Application(config_path)
+                
+                # Log configuration details
+                if hasattr(app.embeddings, 'graph') and app.embeddings.graph:
+                    logger.info("Graph configuration found in embeddings")
+                
+                # Log index path
+                if hasattr(app, 'config') and 'path' in app.config:
+                    logger.info(f"Index will be stored at: {app.config['path']}")
+                
+                return app
+            except Exception as e:
+                logger.error(f"Error loading configuration from {config_path}: {e}")
+                logger.warning("Falling back to default configuration")
+        else:
+            logger.warning(f"Configuration file not found: {config_path}")
+            logger.warning("Falling back to default configuration")
+    else:
+        logger.info("No configuration file specified, using default configuration")
     
-    # Use settings.yaml_config if available
-    if settings.yaml_config and os.path.exists(settings.yaml_config):
-        logger.info(f"Loading configuration from {settings.yaml_config}")
-        return Application(settings.yaml_config)
+    # If no config provided or loading failed, use default settings
+    logger.info("Creating application with default configuration")
+    
+    # Get settings
+    settings = Settings(config_path)
     
     # Create default configuration
-    logger.info("Creating default configuration")
     config = {
-        "path": settings.index_path,
+        "path": ".txtai/index",  # Default index path
+        "writable": True,  # Enable index writing
+        "content": True,   # Store document content
         "embeddings": {
-            "path": settings.model_path,
-            "gpu": settings.model_gpu,
-            "normalize": settings.model_normalize
+            "path": settings.get("model_path", "sentence-transformers/all-MiniLM-L6-v2"),
+            "gpu": settings.get("model_gpu", True),
+            "normalize": settings.get("model_normalize", True),
+            "content": True,  # Store document content
+            "writable": True   # Enable index writing
         },
         "search": {
-            "hybrid": settings.hybrid_search
+            "hybrid": settings.get("hybrid_search", False)
         }
     }
     
@@ -121,43 +146,56 @@ def build_command(args):
     Args:
         args: Command-line arguments
     """
+    # Use config from args or global args
+    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    
+    if config_path:
+        # Convert to absolute path if it's a relative path
+        if not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+            
+        if not os.path.exists(config_path):
+            logger.error(f"Configuration file not found: {config_path}")
+            logger.error("Please provide a valid path to a configuration file")
+            return
+        
+        logger.info(f"Using configuration from {config_path}")
+    else:
+        logger.warning("No configuration file specified, using default settings")
+    
     # Create application
-    app = create_application(args.config)
+    app = create_application(config_path)
     
     # Create document loader
-    loader = DocumentLoader(app)
+    loader = DocumentLoader()
     
-    # Process input files
+    # Process documents
     documents = []
     
     # Process JSON input if provided
     if args.json_input:
-        if not os.path.exists(args.json_input):
-            logger.error(f"JSON input file not found: {args.json_input}")
-            return
-        
-        import json
-        with open(args.json_input, "r") as f:
-            json_data = json.load(f)
-        
-        if isinstance(json_data, list):
-            documents.extend(json_data)
-        else:
-            documents.append(json_data)
-        
-        logger.info(f"Loaded {len(documents)} documents from JSON")
+        try:
+            with open(args.json_input, 'r') as f:
+                json_data = json.load(f)
+                
+            # Check if it's a list of documents
+            if isinstance(json_data, list):
+                documents.extend(json_data)
+                logger.info(f"Loaded {len(json_data)} documents from {args.json_input}")
+            else:
+                logger.error(f"Invalid JSON format in {args.json_input}. Expected a list of documents.")
+        except Exception as e:
+            logger.error(f"Error loading JSON from {args.json_input}: {e}")
     
     # Process file/directory inputs
     if args.input:
         # Parse extensions
         extensions = None
         if args.extensions:
-            extensions = args.extensions.split(",")
-        
-        # Parse exclude patterns
-        exclude_patterns = None
-        if args.exclude:
-            exclude_patterns = args.exclude.split(",")
+            # Convert comma-separated string to set of extensions
+            extensions = set(ext.strip().lower() for ext in args.extensions.split(","))
+            # Add leading dot if not present
+            extensions = {ext if ext.startswith('.') else f'.{ext}' for ext in extensions}
         
         for input_path in args.input:
             path = Path(input_path)
@@ -176,8 +214,7 @@ def build_command(args):
                     dir_docs = loader.process_directory(
                         str(path),
                         recursive=args.recursive,
-                        extensions=extensions,
-                        exclude_patterns=exclude_patterns
+                        extensions=extensions
                     )
                     documents.extend(dir_docs)
                 except Exception as e:
@@ -186,51 +223,30 @@ def build_command(args):
             else:
                 logger.warning(f"Input path not found: {path}")
     
+    # Check if we have documents to process
     if not documents:
         logger.error("No documents found to process")
         return
     
     logger.info(f"Processed {len(documents)} documents")
     
-    # Index documents
+    # Use the application's add method which handles both indexing and saving
     logger.info("Indexing documents...")
-    app.add(documents)
-    app.index()
-    logger.info("Documents indexed successfully")
-    
-    # Build graph if requested
-    if args.build_graph:
-        logger.info("Building knowledge graph...")
+    try:
+        # Add documents to the index
+        app.add(documents)
         
-        # Create graph builder
-        builder_type = args.graph_builder if args.graph_builder else Settings().graph_builder
+        # Build the index
+        app.index()
         
-        # Select graph builder based on type
-        if builder_type == "semantic":
-            builder = SemanticGraphBuilder(app.embeddings)
-        elif builder_type == "entity":
-            builder = EntityGraphBuilder(app.embeddings)
-        elif builder_type == "hybrid":
-            builder = HybridGraphBuilder(app.embeddings)
-        else:
-            logger.warning(f"Unknown graph builder type: {builder_type}, using semantic")
-            builder = SemanticGraphBuilder(app.embeddings)
+        logger.info("Documents indexed successfully")
         
-        # Configure builder
-        builder.similarity_threshold = args.similarity_threshold if args.similarity_threshold else Settings().similarity_threshold
-        builder.max_connections = args.max_connections if args.max_connections else Settings().max_connections
-        
-        # Build graph
-        graph = builder.build(documents)
-        
-        # Save graph
-        graph_path = args.graph_path if args.graph_path else Settings().graph_path
-        builder.save(graph_path)
-        
-        logger.info(f"Graph built with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
-        logger.info(f"Graph saved to {graph_path}")
-    
-    logger.info("Build completed successfully")
+        # Log if graph was built
+        if hasattr(app.embeddings, 'graph') and app.embeddings.graph:
+            logger.info("Knowledge graph was automatically built based on YAML configuration")
+    except Exception as e:
+        logger.error(f"Error indexing documents: {e}")
+        return
 
 def search_command(args):
     """
@@ -239,8 +255,21 @@ def search_command(args):
     Args:
         args: Command-line arguments
     """
+    # Use config from args or global args
+    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    
+    if config_path:
+        # Convert to absolute path if it's a relative path
+        if not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+            
+        if not os.path.exists(config_path):
+            logger.error(f"Configuration file not found: {config_path}")
+            logger.error("Please provide a valid path to a configuration file")
+            return
+    
     # Create application
-    app = create_application(args.config)
+    app = create_application(config_path)
     
     # Get embeddings
     embeddings = app.embeddings
@@ -254,59 +283,36 @@ def search_command(args):
         
     elif args.search_type == "graph":
         # Graph-based search
-        if not args.graph_path:
-            logger.error("Graph path is required for graph search")
+        # Check if graph is available
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            logger.error("No graph found in the embeddings")
             return
-        
-        # Load embeddings with graph
-        if not os.path.exists(os.path.dirname(args.graph_path)):
-            logger.error(f"Graph directory not found: {os.path.dirname(args.graph_path)}")
-            return
-        
-        # Load embeddings (which includes the graph)
-        embeddings.load(os.path.dirname(args.graph_path))
         
         # Create graph retriever
         retriever = GraphRetriever(embeddings)
         
     elif args.search_type == "path":
         # Path-based search
-        if not args.graph_path:
-            logger.error("Graph path is required for path search")
+        # Check if graph is available
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            logger.error("No graph found in the embeddings")
             return
-        
-        # Load embeddings with graph
-        if not os.path.exists(os.path.dirname(args.graph_path)):
-            logger.error(f"Graph directory not found: {os.path.dirname(args.graph_path)}")
-            return
-        
-        # Load embeddings (which includes the graph)
-        embeddings.load(os.path.dirname(args.graph_path))
         
         # Create path retriever
         retriever = PathRetriever(embeddings)
         
     elif args.search_type == "hybrid":
         # Hybrid search (vector + graph)
-        if not args.graph_path:
-            logger.warning("Graph path not provided, falling back to vector search")
-            retriever = VectorRetriever(embeddings)
-        else:
-            # Load embeddings with graph
-            if not os.path.exists(os.path.dirname(args.graph_path)):
-                logger.warning(f"Graph directory not found: {os.path.dirname(args.graph_path)}, falling back to vector search")
-                retriever = VectorRetriever(embeddings)
-            else:
-                # Load embeddings (which includes the graph)
-                embeddings.load(os.path.dirname(args.graph_path))
-                
-                # Create vector retriever as fallback
-                retriever = VectorRetriever(embeddings)
-                
+        # Check if hybrid search is enabled
+        if not hasattr(embeddings, 'scoring') or not embeddings.scoring:
+            logger.warning("Hybrid search not enabled in embeddings, falling back to vector search")
+        
+        # Create vector retriever (txtai will use hybrid if enabled)
+        retriever = VectorRetriever(embeddings)
+        
     elif args.search_type == "exact":
         # Exact search
-        logger.warning("Exact search not implemented, falling back to vector search")
-        retriever = VectorRetriever(embeddings)
+        retriever = ExactRetriever(embeddings)
     
     else:
         logger.error(f"Unknown search type: {args.search_type}")
@@ -326,86 +332,30 @@ def search_command(args):
     
     print(f"\nResults for query: '{args.query}'\n")
     
-    for i, result in enumerate(results):
-        print(f"Result {i+1} (Score: {result.get('score', 0):.4f}):")
+    for i, result in enumerate(results, 1):
+        print(f"Result {i}:")
         
-        # Print ID
-        print(f"  ID: {result.get('id', 'N/A')}")
+        # Print score
+        if "score" in result:
+            print(f"  Score: {result['score']:.4f}")
         
         # Print text
-        text = result.get('text', '')
-        if text and len(text) > 200:
-            text = text[:200] + "..."
-        print(f"  Text: {text}")
+        if "text" in result:
+            text = result["text"]
+            # Truncate long text
+            if len(text) > 300:
+                text = text[:300] + "..."
+            print(f"  Text: {text}")
         
         # Print metadata if requested
-        if args.show_metadata and 'metadata' in result:
-            print("  Metadata:")
-            for key, value in result['metadata'].items():
-                print(f"    {key}: {value}")
+        if args.show_metadata and "metadata" in result:
+            print(f"  Metadata: {result['metadata']}")
+        
+        # Print path if available
+        if "path" in result:
+            print(f"  Path: {' -> '.join(result['path'])}")
         
         print()
-    
-    # Extract answers if requested
-    if args.extract_answers:
-        from txtai.pipeline import Extractor
-        
-        # Create extractor
-        extractor = Extractor()
-        
-        # Extract answer
-        answer = extractor(args.query, [(r["id"], r["text"]) for r in results])
-        
-        print("\nExtracted Answer:")
-        print(answer)
-
-def graph_build_command(args):
-    """
-    Handle graph-build command.
-    
-    Args:
-        args: Command-line arguments
-    """
-    # Create application
-    app = create_application(args.config)
-    
-    # Process input
-    documents = []
-    if os.path.isdir(args.input):
-        logger.info(f"Processing directory: {args.input}")
-        loader = DocumentLoader(app)
-        documents = loader.process_directory(args.input)
-    elif os.path.isfile(args.input):
-        logger.info(f"Processing file: {args.input}")
-        loader = DocumentLoader(app)
-        documents = loader.process_file(args.input)
-    else:
-        logger.error(f"Input path not found: {args.input}")
-        return
-    
-    logger.info(f"Building graph from {len(documents)} documents")
-    
-    # Create graph builder
-    if args.builder == "semantic":
-        builder = SemanticGraphBuilder(app.embeddings)
-    elif args.builder == "entity":
-        builder = EntityGraphBuilder(app.embeddings)
-    elif args.builder == "hybrid":
-        builder = HybridGraphBuilder(app.embeddings)
-    else:
-        logger.error(f"Unknown graph builder: {args.builder}")
-        return
-    
-    # Build graph
-    graph = builder.build(documents)
-    
-    # Save graph
-    output_path = args.output if args.output else os.path.join(app.config.get("path", ".txtai"), "graph.pkl")
-    builder.save(output_path)
-    
-    # Log graph info
-    logger.info(f"Graph built with {len(graph.nodes())} nodes and {len(graph.edges())} edges")
-    logger.info(f"Graph saved to {output_path}")
 
 def graph_traverse_command(args):
     """
@@ -414,33 +364,51 @@ def graph_traverse_command(args):
     Args:
         args: Command-line arguments
     """
+    # Use config from args or global args
+    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    
+    if config_path:
+        # Convert to absolute path if it's a relative path
+        if not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+            
+        if not os.path.exists(config_path):
+            logger.error(f"Configuration file not found: {config_path}")
+            logger.error("Please provide a valid path to a configuration file")
+            return
+    
     # Create application
-    app = create_application(args.config)
+    app = create_application(config_path)
     
     # Get embeddings
     embeddings = app.embeddings
     
-    # Load embeddings with graph
-    if not os.path.exists(os.path.dirname(args.graph)):
-        logger.error(f"Graph directory not found: {os.path.dirname(args.graph)}")
+    # Check if graph is available
+    if not hasattr(embeddings, 'graph') or not embeddings.graph:
+        logger.error("No graph found in the embeddings")
         return
     
-    # Load embeddings (which includes the graph)
-    embeddings.load(os.path.dirname(args.graph))
-    
-    # Create traversal
-    traversal = GraphTraversal(embeddings)
-    
-    # Traverse graph
-    results = traversal.traverse(args.query, limit=args.limit)
-    
-    # Print results
-    print(f"\nTraversal results for query: '{args.query}'\n")
-    for i, result in enumerate(results, 1):
-        print(f"Result {i}:")
-        print(f"  Path: {' -> '.join(result['path'])}")
-        print(f"  Score: {result['score']:.4f}")
-        print()
+    try:
+        # Create traversal
+        traversal = GraphTraversal(embeddings)
+        
+        # Traverse graph
+        results = traversal.traverse(args.query, limit=args.limit)
+        
+        # Print results
+        print(f"\nTraversal results for query: '{args.query}'\n")
+        for i, result in enumerate(results, 1):
+            print(f"Result {i}:")
+            print(f"  Path: {' -> '.join(result['path'])}")
+            print(f"  Score: {result['score']:.4f}")
+            if 'text' in result:
+                text = result['text']
+                if len(text) > 300:
+                    text = text[:300] + "..."
+                print(f"  Text: {text}")
+            print()
+    except Exception as e:
+        logger.error(f"Error traversing graph: {e}")
 
 def graph_visualize_command(args):
     """
@@ -456,15 +424,18 @@ def graph_visualize_command(args):
     embeddings = app.embeddings
     
     # Load embeddings with graph
-    if not os.path.exists(os.path.dirname(args.input)):
-        logger.error(f"Graph directory not found: {os.path.dirname(args.input)}")
+    if not os.path.exists(args.input):
+        logger.error(f"Graph directory not found: {args.input}")
         return
     
     # Load embeddings (which includes the graph)
-    embeddings.load(os.path.dirname(args.input))
+    embeddings.load(args.input)
     
     # Get graph
     graph = embeddings.graph
+    if not hasattr(embeddings, 'graph') or not embeddings.graph:
+        logger.error("No graph found in the embeddings")
+        return
     
     # Import visualization libraries
     try:
@@ -477,9 +448,15 @@ def graph_visualize_command(args):
     # Create figure
     plt.figure(figsize=(12, 10))
     
+    # Access the NetworkX backend for visualization
+    graph_backend = graph.backend if hasattr(graph, 'backend') else None
+    if not graph_backend:
+        logger.error("Graph backend not available for visualization")
+        return
+    
     # Draw graph
-    pos = nx.spring_layout(graph)
-    nx.draw(graph, pos, with_labels=True, node_color='skyblue', node_size=1500, edge_color='gray')
+    pos = nx.spring_layout(graph_backend)
+    nx.draw(graph_backend, pos, with_labels=True, node_color='skyblue', node_size=1500, edge_color='gray')
     
     # Save figure
     plt.savefig(args.output)
@@ -499,15 +476,24 @@ def visualize_path_command(args):
     embeddings = app.embeddings
     
     # Load embeddings with graph
-    if not os.path.exists(os.path.dirname(args.input)):
-        logger.error(f"Graph directory not found: {os.path.dirname(args.input)}")
+    if not os.path.exists(args.input):
+        logger.error(f"Graph directory not found: {args.input}")
         return
     
     # Load embeddings (which includes the graph)
-    embeddings.load(os.path.dirname(args.input))
+    embeddings.load(args.input)
     
     # Get graph
     graph = embeddings.graph
+    if not hasattr(embeddings, 'graph') or not embeddings.graph:
+        logger.error("No graph found in the embeddings")
+        return
+    
+    # Access the NetworkX backend for visualization
+    graph_backend = graph.backend if hasattr(graph, 'backend') else None
+    if not graph_backend:
+        logger.error("Graph backend not available for visualization")
+        return
     
     # Parse path
     path = args.path.split(",")
@@ -524,7 +510,7 @@ def visualize_path_command(args):
     plt.figure(figsize=(12, 10))
     
     # Create subgraph with path nodes
-    path_graph = graph.subgraph(path)
+    path_graph = graph_backend.subgraph(path)
     
     # Draw graph
     pos = nx.spring_layout(path_graph)
@@ -544,23 +530,6 @@ def rag_command(args):
     # Create application
     app = create_application(args.config)
     
-    # Create RAG pipeline
-    embeddings = app.embeddings
-    
-    # Load graph if needed
-    if args.retriever in ["graph", "path"]:
-        if not args.graph:
-            logger.error(f"Graph path is required for {args.retriever} retrieval")
-            return
-        
-        # Load embeddings with graph
-        if not os.path.exists(os.path.dirname(args.graph)):
-            logger.error(f"Graph directory not found: {os.path.dirname(args.graph)}")
-            return
-        
-        # Load embeddings (which includes the graph)
-        embeddings.load(os.path.dirname(args.graph))
-    
     # Create RAG config
     rag_config = {
         "generator": {
@@ -571,6 +540,28 @@ def rag_command(args):
             "enabled": args.citations
         }
     }
+    
+    # Get embeddings
+    embeddings = app.embeddings
+    
+    # Load graph if needed
+    if args.retriever in ["graph", "path"]:
+        if not args.graph:
+            logger.error(f"Graph path is required for {args.retriever} retrieval")
+            return
+        
+        # Load embeddings with graph
+        if not os.path.exists(args.graph):
+            logger.error(f"Graph directory not found: {args.graph}")
+            return
+        
+        # Load embeddings (which includes the graph)
+        embeddings.load(args.graph)
+        
+        # Check if graph is available
+        if not hasattr(embeddings, 'graph') or not embeddings.graph:
+            logger.error("No graph found in the embeddings")
+            return
     
     # Create pipeline
     pipeline = RAGPipeline(embeddings, rag_config)
@@ -639,7 +630,9 @@ def rag_command(args):
         print(response)
 
 def main():
-    """Main entry point for the Knowledge Base CLI."""
+    """
+    Main entry point for the Knowledge Base CLI.
+    """
     parser = argparse.ArgumentParser(description="Knowledge Base CLI")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--config", type=str, help="Path to configuration file")
@@ -648,22 +641,13 @@ def main():
     
     # Build command
     build_parser = subparsers.add_parser("build", help="Build knowledge base")
-    build_parser.add_argument("--input", "-i", nargs="+", help="Input files or directories to process")
-    build_parser.add_argument("--json-input", type=str, help="Path to JSON file containing documents")
+    build_parser.add_argument("--config", "-c", type=str, help="Configuration file path (overrides global config)")
+    build_parser.add_argument("--input", "-i", nargs="+", help="Input files or directories")
+    build_parser.add_argument("--json-input", "-j", type=str, help="JSON input file")
     build_parser.add_argument("--recursive", "-r", action="store_true", help="Process directories recursively")
     build_parser.add_argument("--extensions", "-e", type=str, help="Comma-separated list of file extensions to process")
-    build_parser.add_argument("--exclude", "-x", type=str, help="Comma-separated list of patterns to exclude")
-    build_parser.add_argument("--bypass-textractor", action="store_true", help="Bypass textractor for simple file formats")
     build_parser.add_argument("--chunk-size", type=int, default=1000, help="Chunk size for document processing")
     build_parser.add_argument("--chunk-overlap", type=int, default=200, help="Chunk overlap for document processing")
-    build_parser.add_argument("--build-graph", action="store_true", help="Build knowledge graph")
-    build_parser.add_argument("--graph-builder", type=str, choices=["semantic", "entity", "hybrid"], 
-                             default="semantic", help="Type of graph builder to use")
-    build_parser.add_argument("--graph-path", type=str, default=".txtai/graph.pkl", help="Path to save knowledge graph")
-    build_parser.add_argument("--similarity-threshold", type=float, default=0.75, 
-                             help="Similarity threshold for graph building")
-    build_parser.add_argument("--max-connections", type=int, default=5, 
-                             help="Maximum connections per node for graph building")
     
     # Search command
     search_parser = subparsers.add_parser("search", help="Search knowledge base")
@@ -671,27 +655,17 @@ def main():
     search_parser.add_argument("--search-type", "-t", choices=["similar", "vector", "exact", "hybrid", "graph", "path"], 
                              default="hybrid", help="Type of search to perform")
     search_parser.add_argument("--limit", "-l", type=int, default=5, help="Maximum number of results")
-    search_parser.add_argument("--graph-path", type=str, default=".txtai/graph.pkl", help="Path to knowledge graph")
+    search_parser.add_argument("--graph-path", type=str, help="Path to knowledge graph")
     search_parser.add_argument("--show-metadata", "-m", action="store_true", help="Show document metadata")
     search_parser.add_argument("--extract-answers", "-a", action="store_true", help="Extract answers using QA")
     search_parser.add_argument("--path-expression", type=str, help="Path expression for path-based search")
-    
-    # Graph build command
-    graph_build_parser = subparsers.add_parser("graph-build", help="Build graph")
-    graph_build_parser.add_argument("--input", "-i", required=True, help="Input file or directory")
-    graph_build_parser.add_argument("--output", "-o", type=str, default=".txtai/graph.pkl", help="Output graph file")
-    graph_build_parser.add_argument("--builder", "-b", choices=["semantic", "entity", "hybrid"], 
-                                  default="semantic", help="Type of graph builder")
-    graph_build_parser.add_argument("--similarity-threshold", "-s", type=float, default=0.75, 
-                                  help="Similarity threshold for connections")
-    graph_build_parser.add_argument("--max-connections", "-m", type=int, default=5, 
-                                  help="Maximum connections per node")
+    search_parser.add_argument("--config", type=str, help="Path to configuration file")
     
     # Graph traverse command
     graph_traverse_parser = subparsers.add_parser("graph-traverse", help="Traverse graph")
-    graph_traverse_parser.add_argument("--graph", "-g", type=str, required=True, help="Input graph directory")
     graph_traverse_parser.add_argument("--query", "-q", type=str, required=True, help="Query text")
     graph_traverse_parser.add_argument("--limit", "-l", type=int, default=5, help="Maximum number of results")
+    graph_traverse_parser.add_argument("--config", type=str, help="Path to configuration file")
     
     # Graph visualize command
     graph_visualize_parser = subparsers.add_parser("graph-visualize", help="Visualize graph")
@@ -720,8 +694,15 @@ def main():
     
     args = parser.parse_args()
     
-    # Set up logging
+    # Set up logging first
     setup_logging(args.debug)
+    
+    # Store global config
+    args.global_config = args.config
+    
+    # Debug log the arguments
+    logger.debug(f"Command-line arguments: {args}")
+    logger.debug(f"Global config: {args.global_config}")
     
     if not args.command:
         parser.print_help()
@@ -733,8 +714,6 @@ def main():
             build_command(args)
         elif args.command == "search":
             search_command(args)
-        elif args.command == "graph-build":
-            graph_build_command(args)
         elif args.command == "graph-traverse":
             graph_traverse_command(args)
         elif args.command == "graph-visualize":
@@ -746,8 +725,9 @@ def main():
         else:
             logger.error(f"Unknown command: {args.command}")
     except Exception as e:
-        logger.error(f"Error executing command: {e}", exc_info=args.debug)
-        sys.exit(1)
+        logger.error(f"Error executing command: {e}")
+        if args.debug:
+            logger.exception("Detailed error information:")
 
 if __name__ == "__main__":
     main()
