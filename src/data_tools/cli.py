@@ -23,7 +23,7 @@ from data_tools.graph_traversal import GraphTraversal
 from data_tools.visualization import GraphVisualizer, VisualizationOptions
 
 # Import RAG components
-from data_tools.rag import RAGPipeline, VectorRetriever, GraphRetriever, PathRetriever, ExactRetriever
+from data_tools.rag import RAGPipeline, TxtaiRetriever, generate_questions_from_graph
 
 # Import settings
 from data_tools.settings import Settings
@@ -255,75 +255,55 @@ def search_command(args):
     Args:
         args: Command-line arguments
     """
-    # Use config from args or global args
-    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    # Use embeddings path if provided, otherwise fall back to config
+    embeddings_path = args.embeddings
+    config_path = None
     
-    if config_path:
-        # Convert to absolute path if it's a relative path
-        if not os.path.isabs(config_path):
-            config_path = os.path.abspath(config_path)
-            
-        if not os.path.exists(config_path):
-            logger.error(f"Configuration file not found: {config_path}")
-            logger.error("Please provide a valid path to a configuration file")
-            return
+    if not embeddings_path:
+        # Fall back to config if embeddings path not provided
+        config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+        
+        if config_path:
+            # Convert to absolute path if it's a relative path
+            if not os.path.isabs(config_path):
+                config_path = os.path.abspath(config_path)
+                
+            if not os.path.exists(config_path):
+                logger.error(f"Configuration file not found: {config_path}")
+                logger.error("Please provide a valid path to a configuration file")
+                return
     
     # Create application
-    app = create_application(config_path)
+    if embeddings_path:
+        # Create application directly from embeddings path
+        logger.info(f"Loading embeddings from {embeddings_path}")
+        app = Application(f"path: {embeddings_path}")
+    else:
+        # Create application from config
+        app = create_application(config_path)
     
     # Get embeddings
     embeddings = app.embeddings
     
-    # Create retriever based on search type
-    kwargs = {}
-    
-    if args.search_type == "vector" or args.search_type == "similar":
-        # Vector-based search
-        retriever = VectorRetriever(embeddings)
-        
-    elif args.search_type == "graph":
-        # Graph-based search
-        # Check if graph is available
-        if not hasattr(embeddings, 'graph') or not embeddings.graph:
-            logger.error("No graph found in the embeddings")
-            return
-        
-        # Create graph retriever
-        retriever = GraphRetriever(embeddings)
-        
-    elif args.search_type == "path":
-        # Path-based search
-        # Check if graph is available
-        if not hasattr(embeddings, 'graph') or not embeddings.graph:
-            logger.error("No graph found in the embeddings")
-            return
-        
-        # Create path retriever
-        retriever = PathRetriever(embeddings)
-        
-    elif args.search_type == "hybrid":
-        # Hybrid search (vector + graph)
-        # Check if hybrid search is enabled
-        if not hasattr(embeddings, 'scoring') or not embeddings.scoring:
-            logger.warning("Hybrid search not enabled in embeddings, falling back to vector search")
-        
-        # Create vector retriever (txtai will use hybrid if enabled)
-        retriever = VectorRetriever(embeddings)
-        
-    elif args.search_type == "exact":
-        # Exact search
-        retriever = ExactRetriever(embeddings)
-    
-    else:
-        logger.error(f"Unknown search type: {args.search_type}")
+    # For graph-based searches, check if graph is available
+    if args.search_type in ["graph", "path"] and (not hasattr(embeddings, 'graph') or not embeddings.graph):
+        logger.error("No graph found in the embeddings")
+        logger.error("Make sure your embeddings include a graph component")
         return
+    
+    # Create unified retriever with appropriate search type
+    retriever = TxtaiRetriever(embeddings, {
+        "search_type": args.search_type,
+        "limit": args.limit,
+        "max_hops": 2  # Default value, not exposed in CLI for basic search
+    })
     
     # Perform search
     kwargs = {}
     if args.path_expression and args.search_type == "path":
         kwargs["path_expression"] = args.path_expression
     
-    results = retriever.retrieve(args.query, limit=args.limit, **kwargs)
+    results = retriever.retrieve(args.query, **kwargs)
     
     # Display results
     if not results:
@@ -348,8 +328,11 @@ def search_command(args):
             print(f"  Text: {text}")
         
         # Print metadata if requested
-        if args.show_metadata and "metadata" in result:
-            print(f"  Metadata: {result['metadata']}")
+        if args.show_metadata:
+            # Show all fields except text and score which are already shown
+            for key, value in result.items():
+                if key not in ["text", "score"]:
+                    print(f"  {key}: {value}")
         
         # Print path if available
         if "path" in result:
@@ -522,112 +505,231 @@ def visualize_path_command(args):
 
 def rag_command(args):
     """
-    Handle RAG command.
+    Handle rag command.
     
     Args:
         args: Command-line arguments
     """
-    # Create application
-    app = create_application(args.config)
     
-    # Create RAG config
-    rag_config = {
+    # Get config path
+    config_path = args.config
+    
+    # Create application
+    app = create_application(config_path)
+    
+    # Create RAG pipeline
+    pipeline = RAGPipeline(app.embeddings, {
+        "retriever": {
+            "search_type": args.search_type,
+            "limit": args.limit,
+            "max_hops": args.max_hops
+        },
         "generator": {
-            "model": args.model if args.model else "TheBloke/Mistral-7B-OpenOrca-AWQ",
-            "max_tokens": args.max_tokens
+            "prompt_template": args.prompt
         },
         "citation": {
             "enabled": args.citations
         }
-    }
+    })
+    
+    # Generate response
+    response = pipeline.generate(
+        args.query,
+        add_citations=args.citations
+    )
+    
+    # Print response
+    print("\nRAG Response:\n")
+    print(response)
+    
+    # Print context if requested
+    if args.show_context:
+        print("\nRetrieved Context:\n")
+        context = pipeline.retrieve(args.query)
+        
+        for i, doc in enumerate(context, 1):
+            print(f"Document {i}:")
+            print(f"  Score: {doc.get('score', 0.0):.4f}")
+            
+            # Print ID if available
+            if "id" in doc:
+                print(f"  ID: {doc['id']}")
+                
+            # Print title if available
+            if "title" in doc:
+                print(f"  Title: {doc['title']}")
+                
+            # Print text (truncated if too long)
+            if "text" in doc:
+                text = doc["text"]
+                if len(text) > 300:
+                    text = text[:300] + "..."
+                print(f"  Text: {text}")
+                
+            # Print separator between documents
+            print()
+
+def graph_search_command(args):
+    """
+    Handle graph-search command.
+    
+    Args:
+        args: Command-line arguments
+    """
+    
+    # Get config path
+    config_path = args.config
+    
+    # Create application
+    app = create_application(config_path)
     
     # Get embeddings
     embeddings = app.embeddings
     
-    # Load graph if needed
-    if args.retriever in ["graph", "path"]:
-        if not args.graph:
-            logger.error(f"Graph path is required for {args.retriever} retrieval")
-            return
-        
-        # Load embeddings with graph
-        if not os.path.exists(args.graph):
-            logger.error(f"Graph directory not found: {args.graph}")
-            return
-        
-        # Load embeddings (which includes the graph)
-        embeddings.load(args.graph)
-        
-        # Check if graph is available
-        if not hasattr(embeddings, 'graph') or not embeddings.graph:
-            logger.error("No graph found in the embeddings")
-            return
+    # Check if graph is available
+    if not hasattr(embeddings, 'graph') or not embeddings.graph:
+        logger.error("No graph found in the embeddings")
+        logger.error("Make sure your config includes a 'graph' section in the embeddings configuration")
+        return
     
-    # Create pipeline
-    pipeline = RAGPipeline(embeddings, rag_config)
-    
-    # Generate response
-    kwargs = {}
-    if args.path_expression:
-        kwargs["path_expression"] = args.path_expression
-    
-    # If retrieval only, just show the retrieved documents
-    if args.retrieval_only or args.show_context:
-        # Get retriever
-        retriever = None
-        if args.retriever == "vector":
-            retriever = VectorRetriever(embeddings)
-        elif args.retriever == "graph":
-            retriever = GraphRetriever(embeddings)
-        elif args.retriever == "path":
-            retriever = PathRetriever(embeddings)
-        else:
-            retriever = VectorRetriever(embeddings)
+    try:
+        # Create retriever
+        retriever = TxtaiRetriever(embeddings, {
+            "search_type": "graph",
+            "max_hops": args.max_hops,
+            "limit": args.limit
+        })
         
-        # Retrieve documents
-        results = retriever.retrieve(args.query, limit=5, **kwargs)
+        # Perform search
+        results = retriever.retrieve(args.query)
         
-        print(f"\nRetrieved {len(results)} documents for query: '{args.query}'\n")
+        # Print results
+        print(f"\nGraph search results for query: '{args.query}' (max hops: {args.max_hops})\n")
         
-        for i, result in enumerate(results):
-            print(f"Document {i+1} (Score: {result.get('score', 0):.4f}):")
-            print(f"  ID: {result.get('id', 'N/A')}")
+        if not results:
+            print("No results found")
+            return
             
-            # Print text
-            text = result.get('text', '')
-            if text and len(text) > 200:
-                text = text[:200] + "..."
-            print(f"  Text: {text}")
+        for i, result in enumerate(results, 1):
+            print(f"Result {i}:")
+            print(f"  Score: {result.get('score', 0.0):.4f}")
+            
+            # Print node ID if available
+            if "id" in result:
+                print(f"  Node ID: {result['id']}")
+                
+            # Print title if available
+            if "title" in result:
+                print(f"  Title: {result['title']}")
+                
+            # Print text (truncated if too long)
+            if "text" in result:
+                text = result["text"]
+                if len(text) > 300:
+                    text = text[:300] + "..."
+                print(f"  Text: {text}")
+                
+            # Print separator between results
             print()
+            
+    except Exception as e:
+        logger.error(f"Error during graph search: {str(e)}")
         
-        # If we're only showing context, return
-        if args.retrieval_only:
+        # Try direct SQL query as a fallback
+        try:
+            print("\nAttempting fallback search using direct SQL query...\n")
+            
+            # Execute a direct graph query
+            sql_query = f"select id, text, title, score from txtai where graph('{args.query}', {args.max_hops}, {args.limit})"
+            results = embeddings.search(sql_query)
+            
+            if not results:
+                print("No results found with fallback method")
+                return
+                
+            for i, result in enumerate(results, 1):
+                print(f"Result {i}:")
+                print(f"  Score: {result.get('score', 0.0):.4f}")
+                
+                # Print node ID if available
+                if "id" in result:
+                    print(f"  Node ID: {result['id']}")
+                    
+                # Print title if available
+                if "title" in result:
+                    print(f"  Title: {result['title']}")
+                    
+                # Print text (truncated if too long)
+                if "text" in result:
+                    text = result["text"]
+                    if len(text) > 300:
+                        text = text[:300] + "..."
+                    print(f"  Text: {text}")
+                    
+                # Print separator between results
+                print()
+                
+        except Exception as fallback_error:
+            logger.error(f"Fallback search also failed: {str(fallback_error)}")
+            print("\nTry checking your graph configuration and ensure the graph component is properly initialized.")
+
+def graph_questions_command(args):
+    """
+    Handle graph-questions command.
+    
+    Args:
+        args: Command-line arguments
+    """
+    # Use config from args or global args
+    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    
+    if config_path:
+        # Convert to absolute path if it's a relative path
+        if not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+            
+        if not os.path.exists(config_path):
+            logger.error(f"Configuration file not found: {config_path}")
+            logger.error("Please provide a valid path to a configuration file")
             return
     
-    # Generate response with citations if requested
-    if args.citations:
-        result = pipeline.generate_with_citations(args.query, **kwargs)
+    # Create application
+    app = create_application(config_path)
+    
+    # Get embeddings
+    embeddings = app.embeddings
+    
+    # Check if graph is available
+    if not hasattr(embeddings, 'graph') or not embeddings.graph:
+        logger.error("No graph found in the embeddings")
+        logger.error("Make sure your config includes a 'graph' section in the embeddings configuration")
+        return
+    
+    try:
+        # Import the question generator
+        from data_tools.rag import generate_questions_from_graph
         
-        # Print response
-        print("\nResponse:")
-        print(result["response"])
+        # Generate questions from the graph
+        questions = generate_questions_from_graph(
+            embeddings.graph,
+            num_nodes=args.num_nodes,
+            num_questions=args.num_questions
+        )
         
-        # Print citations
-        print("\nCitations:")
-        for statement, sources in result["citations"].items():
-            print(f"\nStatement: {statement}")
-            for source in sources:
-                text = source.get("text", "")
-                if text and len(text) > 100:
-                    text = text[:100] + "..."
-                print(f"  - {text}")
+        # Print questions
+        print(f"\nGenerated questions from the knowledge graph:\n")
         
-        # Print verification
-        print(f"\nVerification: {result['verification']['coverage']*100:.1f}% coverage")
-    else:
-        response = pipeline.generate(args.query, **kwargs)
-        print("\nResponse:")
-        print(response)
+        if not questions:
+            print("No questions could be generated.")
+            return
+            
+        for i, question in enumerate(questions, 1):
+            print(f"{i}. {question}")
+            
+    except Exception as e:
+        logger.error(f"Error generating questions: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 def main():
     """
@@ -655,11 +757,11 @@ def main():
     search_parser.add_argument("--search-type", "-t", choices=["similar", "vector", "exact", "hybrid", "graph", "path"], 
                              default="hybrid", help="Type of search to perform")
     search_parser.add_argument("--limit", "-l", type=int, default=5, help="Maximum number of results")
-    search_parser.add_argument("--graph-path", type=str, help="Path to knowledge graph")
+    search_parser.add_argument("--embeddings", "-e", type=str, help="Path to embeddings directory or archive file")
     search_parser.add_argument("--show-metadata", "-m", action="store_true", help="Show document metadata")
     search_parser.add_argument("--extract-answers", "-a", action="store_true", help="Extract answers using QA")
     search_parser.add_argument("--path-expression", type=str, help="Path expression for path-based search")
-    search_parser.add_argument("--config", type=str, help="Path to configuration file")
+    search_parser.add_argument("--config", type=str, help="Path to configuration file (deprecated, use --embeddings instead)")
     
     # Graph traverse command
     graph_traverse_parser = subparsers.add_parser("graph-traverse", help="Traverse graph")
@@ -692,6 +794,23 @@ def main():
                           help="Only perform retrieval, don't generate text")
     rag_parser.add_argument("--show-context", action="store_true", help="Show retrieved context")
     
+    # Graph search command
+    graph_search_parser = subparsers.add_parser("graph-search", help="Search knowledge graph")
+    graph_search_parser.add_argument("query", help="Search query")
+    graph_search_parser.add_argument("--limit", "-l", type=int, default=10, help="Maximum number of results")
+    graph_search_parser.add_argument("--max-hops", "-m", type=int, default=2, help="Maximum number of hops from seed nodes")
+    graph_search_parser.add_argument("--show-metadata", action="store_true", help="Show document metadata")
+    graph_search_parser.add_argument("--show-neighbors", action="store_true", help="Show connected nodes")
+    graph_search_parser.add_argument("--extract-facts", "-f", action="store_true", help="Extract facts from the graph")
+    graph_search_parser.add_argument("--num-facts", type=int, default=5, help="Number of facts to extract")
+    graph_search_parser.add_argument("--config", type=str, help="Path to configuration file")
+    
+    # Graph questions command
+    graph_questions_parser = subparsers.add_parser("graph-questions", help="Generate questions from the graph")
+    graph_questions_parser.add_argument("--num-nodes", "-n", type=int, default=10, help="Number of central nodes to include")
+    graph_questions_parser.add_argument("--num-questions", "-q", type=int, default=5, help="Number of questions to generate")
+    graph_questions_parser.add_argument("--config", type=str, help="Path to configuration file")
+    
     args = parser.parse_args()
     
     # Set up logging first
@@ -722,6 +841,10 @@ def main():
             visualize_path_command(args)
         elif args.command == "rag":
             rag_command(args)
+        elif args.command == "graph-search":
+            graph_search_command(args)
+        elif args.command == "graph-questions":
+            graph_questions_command(args)
         else:
             logger.error(f"Unknown command: {args.command}")
     except Exception as e:

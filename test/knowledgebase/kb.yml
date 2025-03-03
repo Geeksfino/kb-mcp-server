@@ -13,13 +13,34 @@ embeddings:
   writable: true
   content: true  # Store document content
   
-  # Knowledge graph
+  # Knowledge graph configuration
   graph:
-    backend: networkx  # Graph backend
-    batchsize: 256  # Batch query size
+    backend: networkx  # Graph backend (networkx is recommended)
+    batchsize: 256  # Batch query size for graph building
     limit: 5  # Max connections per node
-    minscore: 0.6  # Minimum similarity score
-    approximate: true  # Only run queries for nodes without edges
+    minscore: 0.6  # Minimum similarity score for edges
+    approximate: true  # Only run queries for nodes without edges (more efficient)
+    
+    # Topic extraction configuration
     topics:
-      algorithm: louvain  # Community detection algorithm
+      algorithm: louvain  # Community detection algorithm (louvain, leiden, etc.)
       terms: 4  # Number of terms for topic labels
+      
+    # Advanced graph options
+    centrality: pagerank  # Centrality algorithm (pagerank, betweenness, etc.)
+    directed: false  # Whether the graph is directed
+    weight: similarity  # Edge weight attribute
+    
+    # Graph search options
+    search:
+      max_hops: 2  # Maximum hops for graph traversal
+      use_centrality: true  # Use centrality for ranking
+      min_score: 0.3  # Minimum similarity score for results
+  
+  # Scoring configuration
+  scoring:
+    method: bm25  # Options: bm25, tfidf, sif, pgtext
+    normalize: true  # Normalize scores between 0-1
+    terms:
+      cachelimit: 1000000000  # Memory limit for indexing
+      cutoff: 0.001  # Cutoff for common terms

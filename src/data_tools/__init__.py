@@ -3,14 +3,12 @@
 from .loader import DocumentLoader
 from .processor import DocumentProcessor
 from .graph_traversal import GraphTraversal
-from .rag import RAGPipeline, VectorRetriever, GraphRetriever, PathRetriever
+from .rag import RAGPipeline, TxtaiRetriever
 
 __all__ = [
     "DocumentLoader",
     "DocumentProcessor",
     "GraphTraversal",
     "RAGPipeline",
-    "VectorRetriever",
-    "GraphRetriever",
-    "PathRetriever"
+    "TxtaiRetriever"
 ]

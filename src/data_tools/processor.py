@@ -38,6 +38,18 @@ class DocumentProcessor:
             logger.info("Hybrid search (dense + sparse) is enabled")
         else:
             logger.info("Only dense embeddings will be used (hybrid search disabled)")
+            
+        # Check if graph is enabled
+        self.graph_enabled = self.app.config.get("embeddings", {}).get("graph", False)
+        if self.graph_enabled:
+            logger.info("Knowledge graph is enabled")
+            # Log graph configuration details if available
+            graph_config = self.app.config.get("embeddings", {}).get("graph", {})
+            if isinstance(graph_config, dict):
+                if graph_config.get("approximate", False):
+                    logger.info("Using approximate graph")
+                if "topics" in graph_config:
+                    logger.info("Topic extraction is configured for graph")
     
     def process_documents(self, documents: List[Union[Dict[str, Any], Tuple]]) -> int:
         """
@@ -111,9 +123,22 @@ class DocumentProcessor:
                 "hybrid_enabled": self.hybrid_enabled
             }
         
+        # Get graph information if available
+        graph_info = {}
+        if hasattr(self.app.embeddings, "graph") and self.app.embeddings.graph:
+            graph = self.app.embeddings.graph
+            graph_backend = graph.backend if hasattr(graph, "backend") else None
+            if graph_backend:
+                graph_info = {
+                    "nodes": graph_backend.number_of_nodes(),
+                    "edges": graph_backend.number_of_edges(),
+                    "graph_enabled": True
+                }
+        
         return {
             "document_count": count,
             "index_info": index_info,
+            "graph_info": graph_info,
             "config": {
                 "model": self.app.config.get("embeddings", {}).get("path"),
                 "storage_type": self.app.config.get("embeddings", {}).get("storagetype")

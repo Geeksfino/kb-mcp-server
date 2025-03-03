@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Union, Any, Tuple, Callable
 import networkx as nx
 import numpy as np
 from txtai.embeddings import Embeddings
+from txtai.app import Application
 
 from .graph_traversal import GraphTraversal
 
@@ -39,12 +40,12 @@ class Retriever(ABC):
         pass
 
 
-class VectorRetriever(Retriever):
-    """Retrieves context based on vector similarity."""
+class TxtaiRetriever(Retriever):
+    """Unified retriever that leverages txtai's built-in search capabilities."""
 
     def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the VectorRetriever.
+        Initialize the TxtaiRetriever.
 
         Args:
             embeddings: txtai Embeddings instance
@@ -56,16 +57,20 @@ class VectorRetriever(Retriever):
         # Configuration parameters
         self.limit = self.config.get("limit", 10)
         self.min_score = self.config.get("min_score", 0.3)
-
+        self.search_type = self.config.get("search_type", "vector")
+        self.max_hops = self.config.get("max_hops", 2)
+    
     def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant context for a query using vector similarity.
+        Retrieve relevant context for a query using txtai's built-in search capabilities.
 
         Args:
             query: Query string
             **kwargs: Additional arguments for retrieval
                 - limit: Maximum number of results to return
                 - min_score: Minimum similarity score
+                - search_type: Type of search to perform (vector, graph, hybrid, exact)
+                - max_hops: Maximum number of hops for graph search
 
         Returns:
             List of context documents
@@ -73,252 +78,63 @@ class VectorRetriever(Retriever):
         # Override config with kwargs if provided
         limit = kwargs.get("limit", self.limit)
         min_score = kwargs.get("min_score", self.min_score)
-        
-        # Search for relevant documents
-        results = self.embeddings.search(query, limit=limit)
-        
-        # Filter by score
-        results = [r for r in results if r["score"] >= min_score]
-        
-        return results
-
-
-class GraphRetriever(Retriever):
-    """Retrieves context based on graph relationships."""
-
-    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize the GraphRetriever.
-
-        Args:
-            embeddings: txtai Embeddings instance with graph component
-            config: Configuration dictionary
-        """
-        self.embeddings = embeddings
-        
-        # Check if embeddings has a graph component
-        if not hasattr(embeddings, 'graph') or not embeddings.graph:
-            raise ValueError("Embeddings instance must have a graph component")
-        
-        self.graph = embeddings.graph
-        self.config = config or {}
-        
-        # Configuration parameters
-        self.limit = self.config.get("limit", 10)
-        self.max_hops = self.config.get("max_hops", 2)
-        
-        # Create graph traversal
-        self.traversal = GraphTraversal(embeddings, {"max_path_length": self.max_hops})
-
-    def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant context for a query using graph relationships.
-
-        Args:
-            query: Query string
-            **kwargs: Additional arguments for retrieval
-                - limit: Maximum number of results to return
-                - max_hops: Maximum number of hops from seed nodes
-
-        Returns:
-            List of context documents
-        """
-        # Override config with kwargs if provided
-        limit = kwargs.get("limit", self.limit)
+        search_type = kwargs.get("search_type", self.search_type)
         max_hops = kwargs.get("max_hops", self.max_hops)
         
-        # First, find seed nodes using vector similarity
-        seed_results = self.embeddings.search(query, limit=5)
-        seed_ids = [r["id"] if "id" in r else str(r.get("id", "")) for r in seed_results]
+        # Build SQL-like query based on search type
+        sql_query = "select id, text, score"
         
-        # Then, find nodes connected to seed nodes
-        context_ids = set()
-        for seed_id in seed_ids:
-            try:
-                # Check if node exists by trying to get its neighbors
-                self.graph.neighbors(seed_id)
-                
-                # Find paths from seed node
-                paths = self.traversal.find_paths_from_node(seed_id, max_hops=max_hops)
-                
-                # Add all nodes in paths to context
-                for path in paths:
-                    context_ids.update(path)
-            except:
-                # Node doesn't exist, skip it
-                continue
+        # Add title to select if available in schema
+        try:
+            if "title" in self.embeddings.config.get("columns", {}):
+                sql_query += ", title"
+        except:
+            pass
         
-        # Retrieve document data for context nodes
-        context = []
-        for node_id in context_ids:
-            try:
-                # Check if node exists by trying to get its attributes
-                # Get node attributes using txtai's graph API
-                node_data = {}
-                for attr in ["text", "id", "title"]:
-                    value = self.graph.attribute(node_id, attr)
-                    if value:
-                        node_data[attr] = value
-                
-                if "text" in node_data:
-                    context.append(node_data)
-            except:
-                # Node doesn't exist, skip it
-                continue
+        sql_query += " from txtai where "
         
-        # Sort by relevance to query
-        for doc in context:
-            if "text" in doc:
-                doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
+        # Different search types
+        if search_type == "vector":
+            sql_query += f"similar('{query}')"
+        elif search_type == "graph" and hasattr(self.embeddings, 'graph') and self.embeddings.graph:
+            sql_query += f"graph('{query}', {max_hops}, {limit*2})"
+        elif search_type == "hybrid" and hasattr(self.embeddings, 'graph') and self.embeddings.graph:
+            # Combine vector and graph search
+            sql_query += f"(similar('{query}') or graph('{query}', {max_hops}, {limit}))"
+        elif search_type == "exact":
+            # Escape single quotes in query
+            escaped_query = query.replace("'", "''")
+            sql_query += f"text ~ '{escaped_query}'"
+        else:
+            # Default to vector search
+            sql_query += f"similar('{query}')"
         
-        context.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # Add limit
+        sql_query += f" limit {limit}"
         
-        return context[:limit]
-
-
-class PathRetriever(Retriever):
-    """Retrieves context based on path traversal."""
-
-    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize the PathRetriever.
-
-        Args:
-            embeddings: txtai Embeddings instance with graph component
-            config: Configuration dictionary
-        """
-        self.embeddings = embeddings
-        
-        # Check if embeddings has a graph component
-        if not hasattr(embeddings, 'graph') or not embeddings.graph:
-            raise ValueError("Embeddings instance must have a graph component")
-        
-        self.graph = embeddings.graph
-        self.config = config or {}
-        
-        # Configuration parameters
-        self.limit = self.config.get("limit", 10)
-        
-        # Create graph traversal
-        self.traversal = GraphTraversal(embeddings)
-
-    def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant context for a query using path traversal.
-
-        Args:
-            query: Query string
-            **kwargs: Additional arguments for retrieval
-                - limit: Maximum number of results to return
-                - path_expression: Cypher-like path expression
-
-        Returns:
-            List of context documents
-        """
-        # Override config with kwargs if provided
-        limit = kwargs.get("limit", self.limit)
-        path_expression = kwargs.get("path_expression")
-        
-        # Find paths
-        paths = self.traversal.query_paths(query, path_expression)
-        
-        # Extract unique nodes from paths
-        context_ids = set()
-        for path in paths:
-            context_ids.update(path)
-        
-        # Retrieve document data for context nodes
-        context = []
-        for node_id in context_ids:
-            try:
-                # Check if node exists by trying to get its attributes
-                # Get node attributes using txtai's graph API
-                node_data = {}
-                for attr in ["text", "id", "title"]:
-                    value = self.graph.attribute(node_id, attr)
-                    if value:
-                        node_data[attr] = value
-                
-                if "text" in node_data:
-                    context.append(node_data)
-            except:
-                # Node doesn't exist, skip it
-                continue
-        
-        # Sort by relevance to query
-        for doc in context:
-            if "text" in doc:
-                doc["score"] = float(self.embeddings.similarity(query, doc["text"]))
-        
-        context.sort(key=lambda x: x.get("score", 0), reverse=True)
-        
-        return context[:limit]
-
-
-class ExactRetriever(Retriever):
-    """Retrieves context based on exact text matching."""
-
-    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize the ExactRetriever.
-
-        Args:
-            embeddings: txtai Embeddings instance
-            config: Configuration dictionary
-        """
-        self.embeddings = embeddings
-        self.config = config or {}
-        
-        # Configuration parameters
-        self.limit = self.config.get("limit", 10)
-        self.case_sensitive = self.config.get("case_sensitive", False)
-
-    def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant context for a query using exact text matching.
-
-        Args:
-            query: Query string
-            **kwargs: Additional arguments for retrieval
-                - limit: Maximum number of results to return
-                - case_sensitive: Whether to perform case-sensitive matching
-
-        Returns:
-            List of context documents
-        """
-        # Override config with kwargs if provided
-        limit = kwargs.get("limit", self.limit)
-        case_sensitive = kwargs.get("case_sensitive", self.case_sensitive)
-        
-        # First try vector search to get documents that might contain the query
-        vector_retriever = VectorRetriever(self.embeddings)
-        results = vector_retriever.retrieve(query, limit=limit * 2)  # Get more results to filter
-        
-        # Filter results for exact matches
-        exact_matches = []
-        for result in results:
-            if "text" in result and result["text"]:
-                # Apply case sensitivity
-                doc_text = result["text"] if case_sensitive else result["text"].lower()
-                search_query = query if case_sensitive else query.lower()
-                
-                # Check for exact match
-                if search_query in doc_text:
-                    # Boost the score for exact matches
-                    result["score"] = min(1.0, result["score"] * 1.5)  # Boost score but cap at 1.0
-                    exact_matches.append(result)
-                    
-                    # Stop if we've reached the limit
-                    if len(exact_matches) >= limit:
-                        break
-        
-        # If we found exact matches, return them
-        if exact_matches:
-            return exact_matches
+        try:
+            # Execute search
+            results = self.embeddings.search(sql_query)
             
-        # Otherwise, fall back to vector search results
-        logger.info("No exact matches found, falling back to vector search")
-        return results[:limit]
+            # Filter by score
+            results = [r for r in results if r.get("score", 0) >= min_score]
+            
+            # Ensure consistent format
+            for result in results:
+                # Ensure score is a float
+                if "score" in result:
+                    result["score"] = float(result["score"])
+            
+            return results
+            
+        except Exception as e:
+            logger.warning(f"Search failed: {str(e)}. Falling back to basic vector search.")
+            # Fall back to basic vector search
+            try:
+                return self.embeddings.search(query, limit=limit)
+            except Exception as e2:
+                logger.error(f"Fallback search also failed: {str(e2)}")
+                return []
 
 
 class Generator:
@@ -355,13 +171,14 @@ class Generator:
             logger.warning("txtai LLM not available. Text generation will not work.")
             self.llm = None
 
-    def generate(self, query: str, context: List[Dict[str, Any]]) -> str:
+    def generate(self, query: str, context: List[Dict[str, Any]], **kwargs) -> str:
         """
         Generate a response using an LLM.
 
         Args:
             query: Query string
             context: Context documents
+            **kwargs: Additional arguments for generation
 
         Returns:
             Generated response
@@ -400,94 +217,152 @@ context: {context_text}
 class Citation:
     """Handles citation generation and verification."""
 
-    def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the Citation.
 
         Args:
-            embeddings: txtai Embeddings instance
             config: Configuration dictionary
         """
-        self.embeddings = embeddings
         self.config = config or {}
         
         # Configuration parameters
-        self.method = self.config.get("method", "semantic_similarity")
-        self.threshold = self.config.get("threshold", 0.7)
+        self.min_similarity = self.config.get("min_similarity", 0.7)
+        
+        # Import nltk only when needed
+        try:
+            import nltk
+            self.nltk = nltk
+            
+            # Download required nltk resources
+            try:
+                nltk.data.find('tokenizers/punkt')
+            except LookupError:
+                nltk.download('punkt', quiet=True)
+        except ImportError:
+            logger.warning("nltk not available. Citation will not work properly.")
+            self.nltk = None
 
     def find_sources(self, response: str, context: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Find sources for statements in the response.
+        Find sources for each sentence in the response.
 
         Args:
             response: Generated response
             context: Context documents
 
         Returns:
-            Dictionary mapping statements to sources
+            Dictionary mapping sentences to source documents
         """
-        # Split response into sentences
-        import nltk
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            nltk.download('punkt')
+        if self.nltk is None:
+            logger.warning("nltk not available. Cannot find sources.")
+            return {}
         
-        sentences = nltk.sent_tokenize(response)
+        # Tokenize response into sentences
+        sentences = self.nltk.sent_tokenize(response)
         
         # Find sources for each sentence
         sources = {}
         for sentence in sentences:
-            if len(sentence.strip()) < 10:  # Skip short sentences
-                continue
+            sentence_sources = []
             
-            if self.method == "semantic_similarity":
-                # Find most similar context documents
-                matches = []
-                for doc in context:
-                    text = doc.get("text", "")
-                    if text:
-                        similarity = float(self.embeddings.similarity(sentence, text))
-                        if similarity >= self.threshold:
-                            matches.append({
-                                "doc": doc,
-                                "score": similarity
-                            })
+            for doc in context:
+                if "text" not in doc:
+                    continue
                 
-                # Sort by similarity
-                matches.sort(key=lambda x: x["score"], reverse=True)
+                # Calculate similarity between sentence and document
+                try:
+                    # Use cosine similarity if available
+                    from sklearn.feature_extraction.text import TfidfVectorizer
+                    from sklearn.metrics.pairwise import cosine_similarity
+                    
+                    vectorizer = TfidfVectorizer().fit_transform([sentence, doc["text"]])
+                    similarity = cosine_similarity(vectorizer[0:1], vectorizer[1:2])[0][0]
+                except:
+                    # Fall back to simple string matching
+                    similarity = 0
+                    if sentence.lower() in doc["text"].lower():
+                        similarity = 0.9
                 
-                if matches:
-                    sources[sentence] = [m["doc"] for m in matches[:3]]
+                # Add document as source if similarity is high enough
+                if similarity >= self.min_similarity:
+                    source = {
+                        "id": doc.get("id", ""),
+                        "title": doc.get("title", ""),
+                        "text": doc.get("text", ""),
+                        "similarity": similarity
+                    }
+                    sentence_sources.append(source)
             
-            elif self.method == "keyword_matching":
-                # Simple keyword matching
-                matches = []
-                sentence_words = set(sentence.lower().split())
-                
-                for doc in context:
-                    text = doc.get("text", "")
-                    if text:
-                        text_words = set(text.lower().split())
-                        overlap = len(sentence_words.intersection(text_words)) / len(sentence_words)
-                        
-                        if overlap >= self.threshold:
-                            matches.append({
-                                "doc": doc,
-                                "score": overlap
-                            })
-                
-                # Sort by overlap
-                matches.sort(key=lambda x: x["score"], reverse=True)
-                
-                if matches:
-                    sources[sentence] = [m["doc"] for m in matches[:3]]
+            if sentence_sources:
+                # Sort sources by similarity
+                sentence_sources.sort(key=lambda x: x["similarity"], reverse=True)
+                sources[sentence] = sentence_sources
         
         return sources
-    
+
+    def add_citations(self, response: str, context: List[Dict[str, Any]]) -> str:
+        """
+        Add citations to the response.
+
+        Args:
+            response: Generated response
+            context: Context documents
+
+        Returns:
+            Response with citations
+        """
+        if self.nltk is None:
+            logger.warning("nltk not available. Cannot add citations.")
+            return response
+        
+        # Find sources
+        sources = self.find_sources(response, context)
+        
+        if not sources:
+            return response
+        
+        # Add footnotes at the end
+        footnotes = "\n\nSources:\n"
+        source_map = {}  # Map sources to numbers
+        source_counter = 1
+        
+        # Add citations to the response
+        cited_response = ""
+        for sentence in self.nltk.sent_tokenize(response):
+            if sentence in sources:
+                # Get source IDs
+                citation_ids = []
+                for source in sources[sentence]:
+                    source_id = source.get("id", "") or source.get("title", "")
+                    if source_id:
+                        if source_id not in source_map:
+                            source_map[source_id] = source_counter
+                            
+                            # Add footnote
+                            title = source.get("title", "")
+                            footnotes += f"[{source_counter}] {title or source_id}\n"
+                            source_counter += 1
+                        
+                        citation_ids.append(str(source_map[source_id]))
+                
+                # Add citation to sentence
+                if citation_ids:
+                    cited_response += sentence + " [" + ", ".join(citation_ids) + "] "
+                else:
+                    cited_response += sentence + " "
+            else:
+                cited_response += sentence + " "
+        
+        # Add footnotes if we have any
+        if len(source_map) > 0:
+            return cited_response.strip() + footnotes
+        else:
+            return cited_response.strip()
+
     def verify_response(self, response: str, context: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Verify the response against the context.
+        Verify that the response is supported by the context.
 
         Args:
             response: Generated response
@@ -496,28 +371,35 @@ class Citation:
         Returns:
             Verification results
         """
+        if self.nltk is None:
+            logger.warning("nltk not available. Cannot verify response.")
+            return {"verified": False, "coverage": 0}
+        
         # Find sources
         sources = self.find_sources(response, context)
         
         # Calculate coverage
-        total_sentences = len(nltk.sent_tokenize(response))
-        sourced_sentences = len(sources)
-        
-        coverage = sourced_sentences / total_sentences if total_sentences > 0 else 0
+        sentences = self.nltk.sent_tokenize(response)
+        coverage = len(sources) / len(sentences) if sentences else 0
         
         return {
-            "sources": sources,
             "coverage": coverage,
-            "verified": coverage >= 0.8  # Consider verified if 80% of sentences have sources
+            "verified": coverage >= 0.7  # Consider verified if 70% of sentences have sources
         }
 
-
 class RAGPipeline:
-    """Coordinates the RAG process."""
+    """
+    Retrieval Augmented Generation (RAG) pipeline.
+    
+    This class coordinates the RAG process:
+    1. Retrieves relevant context for a query
+    2. Generates a response using the retrieved context
+    3. Optionally adds citations to the response
+    """
 
     def __init__(self, embeddings: Embeddings, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the RAGPipeline.
+        Initialize the RAG pipeline.
 
         Args:
             embeddings: txtai Embeddings instance
@@ -526,126 +408,296 @@ class RAGPipeline:
         self.embeddings = embeddings
         self.config = config or {}
         
-        # Get graph if available
-        self.graph = getattr(embeddings, "graph", None)
-        
         # Create components
-        self.retriever = self._create_retriever()
-        self.generator = Generator(self.config.get("generator"))
+        self.retriever = TxtaiRetriever(embeddings, self.config.get("retriever", {}))
+        self.generator = Generator(self.config.get("generator", {}))
         
         # Create citation handler if enabled
         citation_config = self.config.get("citation", {})
         if citation_config.get("enabled", False):
-            self.citation = Citation(embeddings, citation_config)
+            self.citation = Citation(citation_config)
         else:
             self.citation = None
 
-    def _create_retriever(self) -> Retriever:
-        """
-        Create the appropriate retriever based on configuration.
-
-        Returns:
-            A Retriever instance
-        """
-        retriever_type = self.config.get("retriever", "vector")
-        
-        if retriever_type == "vector":
-            return VectorRetriever(self.embeddings, self.config)
-        elif retriever_type == "graph":
-            if self.graph is None:
-                logger.warning("Graph not available. Falling back to vector retriever.")
-                return VectorRetriever(self.embeddings, self.config)
-            return GraphRetriever(self.embeddings, self.config)
-        elif retriever_type == "path":
-            if self.graph is None:
-                logger.warning("Graph not available. Falling back to vector retriever.")
-                return VectorRetriever(self.embeddings, self.config)
-            return PathRetriever(self.embeddings, self.config)
-        elif retriever_type == "exact":
-            return ExactRetriever(self.embeddings, self.config)
-        else:
-            raise ValueError(f"Unknown retriever type: {retriever_type}")
-
     def generate(self, query: str, **kwargs) -> str:
         """
-        Generate a response for a query.
+        Generate a response to a query using RAG.
 
         Args:
             query: Query string
-            **kwargs: Additional arguments for retrieval and generation
+            **kwargs: Additional arguments for generation
+                - limit: Maximum number of context documents to retrieve
+                - search_type: Type of search to perform (vector, graph, hybrid, exact)
+                - max_hops: Maximum number of hops for graph search
+                - min_score: Minimum similarity score for retrieved documents
+                - prompt_template: Custom prompt template
+                - system_prompt: Custom system prompt
+                - add_citations: Whether to add citations to the response
 
         Returns:
             Generated response
         """
-        # Retrieve context
-        context = self.retriever.retrieve(query, **kwargs)
+        # Get retrieval parameters
+        limit = kwargs.get("limit", self.config.get("limit", 5))
+        search_type = kwargs.get("search_type", self.config.get("search_type", "vector"))
+        max_hops = kwargs.get("max_hops", self.config.get("max_hops", 2))
+        min_score = kwargs.get("min_score", self.config.get("min_score", 0.3))
         
-        # Generate response
-        response = self.generator.generate(query, context)
+        # Retrieve context
+        context = self.retriever.retrieve(
+            query, 
+            limit=limit,
+            search_type=search_type,
+            max_hops=max_hops,
+            min_score=min_score
+        )
+        
+        if not context:
+            logger.warning("No context found for query")
+            # Generate response without context
+            return self.generator.generate(query, context=[], **kwargs)
+        
+        # Generate response with context
+        response = self.generator.generate(query, context=context, **kwargs)
+        
+        # Add citations if enabled
+        if self.citation and kwargs.get("add_citations", self.config.get("add_citations", True)):
+            response = self.citation.add_citations(response, context)
         
         return response
-    
-    def generate_with_citations(self, query: str, **kwargs) -> Dict[str, Any]:
+
+    def retrieve(self, query: str, **kwargs) -> List[Dict[str, Any]]:
         """
-        Generate a response with citations.
+        Retrieve context for a query.
 
         Args:
             query: Query string
-            **kwargs: Additional arguments for retrieval and generation
+            **kwargs: Additional arguments for retrieval
 
         Returns:
-            Dictionary with response and citations
+            List of context documents
         """
-        if self.citation is None:
-            raise ValueError("Citation not enabled. Configure citation in the pipeline.")
-        
-        # Retrieve context
-        context = self.retriever.retrieve(query, **kwargs)
-        
-        # Generate response
-        response = self.generator.generate(query, context)
-        
-        # Find citations
-        citations = self.citation.find_sources(response, context)
-        
-        # Verify response
-        verification = self.citation.verify_response(response, context)
-        
-        return {
-            "response": response,
-            "citations": citations,
-            "verification": verification
-        }
+        return self.retriever.retrieve(query, **kwargs)
+
+# Graph utility functions
+def extract_facts_from_graph(graph, query=None, num_facts=5, llm=None):
+    """
+    Extract facts from a graph using a language model.
     
-    def evaluate(self, query: str, response: str, ground_truth: str) -> Dict[str, float]:
+    Args:
+        graph: txtai graph object
+        query: Optional query to filter nodes
+        num_facts: Number of facts to extract
+        llm: Optional language model instance
+        
+    Returns:
+        List of extracted facts
+    """
+    # If query is provided, use it to filter the graph
+    if query:
+        # Use search to find relevant nodes
+        try:
+            filtered_graph = graph.search(query, 10)
+            nodes = list(filtered_graph.centrality().keys())[:10]
+        except Exception as e:
+            logger.warning(f"Error searching graph: {e}")
+            # Fall back to centrality
+            nodes = list(graph.centrality().keys())[:10]
+    else:
+        # Otherwise use centrality to get the most important nodes
+        nodes = list(graph.centrality().keys())[:10]
+    
+    # Extract text from the selected nodes
+    texts = []
+    for node_id in nodes:
+        try:
+            node = graph.node(node_id)
+            if node and "text" in node:
+                texts.append(node["text"])
+        except Exception as e:
+            logger.debug(f"Error getting node {node_id}: {e}")
+    
+    text = "\n".join(texts)
+    
+    if not text:
+        return ["No text found in graph nodes"]
+    
+    # If we have an LLM configured, use it to extract facts
+    try:
+        if llm is None:
+            from txtai import LLM
+            llm = LLM()
+        
+        # Create the prompt for the LLM
+        prompt = f"""Extract {num_facts} key facts from the following text. 
+        Provide each fact as a concise, standalone statement.
+        
+        Text:
+        {text}
+        
+        Facts:
         """
-        Evaluate the quality of a response.
+        
+        # Get the response from the LLM
+        response = llm(prompt)
+        
+        # Parse the response into a list of facts
+        facts = []
+        for line in response.split('\n'):
+            line = line.strip()
+            # Skip empty lines and lines that don't look like facts
+            if not line or len(line) < 10:
+                continue
+            # Remove leading numbers and dots if present
+            if line[0].isdigit() and line[1:3] in ['. ', '- ', ') ']:
+                line = line[3:].strip()
+            facts.append(line)
+            
+        return facts[:num_facts]  # Ensure we don't return more than requested
+        
+    except Exception as e:
+        logger.warning(f"Could not extract facts using LLM: {e}")
+        # Fallback: return the first few sentences from the text
+        import re
+        sentences = re.split(r'[.!?]+', text)
+        return [s.strip() for s in sentences if len(s.strip()) > 20][:num_facts]
 
-        Args:
-            query: Query string
-            response: Generated response
-            ground_truth: Ground truth response
+def find_relationship(graph, concept1, concept2, max_path_length=5, llm=None):
+    """
+    Find and explain the relationship between two concepts in the graph.
+    
+    Args:
+        graph: txtai graph object
+        concept1: First concept
+        concept2: Second concept
+        max_path_length: Maximum path length
+        llm: Optional language model instance
+        
+    Returns:
+        Dictionary with relationship information
+    """
+    # Find nodes related to each concept
+    try:
+        nodes1 = graph.search(concept1, 3)
+        nodes2 = graph.search(concept2, 3)
+        
+        # Get the IDs of the top nodes for each concept
+        id1 = list(nodes1.centrality().keys())[0] if nodes1.centrality() else None
+        id2 = list(nodes2.centrality().keys())[0] if nodes2.centrality() else None
+    except Exception as e:
+        logger.warning(f"Error searching for concepts: {e}")
+        return {"error": f"Could not find nodes for concepts: {e}"}
+    
+    if not id1 or not id2:
+        return {"error": f"One or both concepts not found in the graph"}
+    
+    # Find the shortest path between the two nodes
+    try:
+        path = graph.showpath(id1, id2, maxlength=max_path_length)
+    except Exception as e:
+        logger.warning(f"Error finding path: {e}")
+        return {"error": f"Error finding path between concepts: {e}"}
+    
+    if not path:
+        return {"error": f"No path found between {concept1} and {concept2} within {max_path_length} steps"}
+    
+    # Get the text for each node in the path
+    path_texts = []
+    path_nodes = []
+    for node_id in path:
+        try:
+            node = graph.node(node_id)
+            if node:
+                path_nodes.append(node)
+                if "text" in node:
+                    path_texts.append(node["text"])
+        except Exception as e:
+            logger.debug(f"Error getting node {node_id}: {e}")
+    
+    # Create a prompt to explain the relationship
+    text = "\n".join(path_texts)
+    
+    explanation = ""
+    if text and llm:
+        try:
+            prompt = f"""Based on the following text, explain the relationship between {concept1} and {concept2}.
+            Only use information from the provided text.
+            
+            {text}"""
+            
+            explanation = llm(prompt)
+        except Exception as e:
+            logger.warning(f"Error generating explanation: {e}")
+            explanation = f"Path found between {concept1} and {concept2} with {len(path)} nodes."
+    else:
+        explanation = f"Path found between {concept1} and {concept2} with {len(path)} nodes."
+    
+    return {
+        "path": path,
+        "path_nodes": path_nodes,
+        "explanation": explanation,
+        "concepts": [concept1, concept2]
+    }
 
-        Returns:
-            Evaluation metrics
-        """
-        # Calculate semantic similarity
-        similarity = float(self.embeddings.similarity(response, ground_truth))
+def generate_questions_from_graph(graph, num_nodes=10, num_questions=5, llm=None):
+    """
+    Generate interesting questions that could be answered using the graph.
+    
+    Args:
+        graph: txtai graph object
+        num_nodes: Number of central nodes to include
+        num_questions: Number of questions to generate
+        llm: Optional language model instance
         
-        # Calculate token overlap (simple metric)
-        response_tokens = set(response.lower().split())
-        ground_truth_tokens = set(ground_truth.lower().split())
+    Returns:
+        List of generated questions
+    """
+    # Get the most central nodes
+    nodes = list(graph.centrality().keys())[:num_nodes]
+    
+    # Extract text from the selected nodes
+    texts = []
+    for node_id in nodes:
+        try:
+            node = graph.node(node_id)
+            if node and "text" in node:
+                texts.append(node["text"])
+        except Exception as e:
+            logger.debug(f"Error getting node {node_id}: {e}")
+    
+    text = "\n".join(texts)
+    
+    if not text:
+        return ["No text found in graph nodes"]
+    
+    # If we have an LLM, use it to generate questions
+    try:
+        if llm is None:
+            from txtai.pipeline import LLM
+            llm = LLM()
         
-        if ground_truth_tokens:
-            precision = len(response_tokens.intersection(ground_truth_tokens)) / len(response_tokens) if response_tokens else 0
-            recall = len(response_tokens.intersection(ground_truth_tokens)) / len(ground_truth_tokens)
-            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-        else:
-            precision = recall = f1 = 0
+        # Create the prompt for the LLM
+        prompt = f"""Based on the following text, generate {num_questions} interesting questions that could be answered using this information.
+        Make the questions diverse and thought-provoking.
         
-        return {
-            "similarity": similarity,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1
-        }
+        {text}"""
+        
+        # Get the response from the LLM
+        response = llm(prompt)
+        
+        # Parse the response into a list of questions
+        questions = []
+        for line in response.split('\n'):
+            line = line.strip()
+            # Only include lines that look like questions
+            if '?' in line:
+                # Remove leading numbers if present
+                if line[0].isdigit() and line[1:3] in ['. ', '- ', ') ']:
+                    line = line[3:].strip()
+                questions.append(line)
+        
+        return questions[:num_questions]
+        
+    except Exception as e:
+        logger.warning(f"Could not generate questions using LLM: {e}")
+        return [f"Could not generate questions: {e}"]
