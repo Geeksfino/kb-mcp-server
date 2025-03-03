@@ -10,3 +10,8 @@ test/cache/
 *.faiss
 *.pkl
 *.tar.gz
+
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
