@@ -120,6 +120,8 @@ def enhanced_graph_search(embeddings, query, limit=5):
         min_keyterm_matches = 2
         min_centrality = 0.15
         causal_boost = 1.5
+        semantic_similarity_threshold = 0.25  # Threshold for semantic similarity filtering
+        deduplication_threshold = 0.8  # Threshold for considering two texts as duplicates
 
         # Define causal keywords
         causal_keywords = {"causes", "leads to", "improves", "boosts", "results in", "reduces", "enhances"}
@@ -161,6 +163,55 @@ def enhanced_graph_search(embeddings, query, limit=5):
                     return False
 
             return True
+
+        # Helper function to compute semantic similarity between query and text
+        def compute_semantic_similarity(text, query_text):
+            """
+            Compute semantic similarity between text and query using txtai's similarity function.
+            Returns a similarity score between 0 and 1.
+            """
+            try:
+                # Use txtai's built-in similarity function
+                similarity_results = embeddings.similarity(query_text, [text])
+                if similarity_results and similarity_results[0]:
+                    return similarity_results[0][1]  # Return the similarity score
+                return 0.0
+            except Exception as e:
+                logger.warning(f"Error computing semantic similarity: {e}")
+                return 0.0
+
+        # Helper function to remove duplicate or near-duplicate results
+        def remove_duplicates(results, threshold=deduplication_threshold):
+            """
+            Remove near-duplicate results using semantic similarity.
+            Returns a list of unique results.
+            """
+            if not results:
+                return []
+            
+            unique_results = []
+            unique_texts = []
+            
+            # Sort by score to keep highest scoring duplicates
+            sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
+            
+            for result in sorted_results:
+                text = result["text"]
+                is_duplicate = False
+                
+                # Check if this text is similar to any existing unique text
+                for unique_text in unique_texts:
+                    # Use txtai's built-in similarity to compare texts
+                    similarity = compute_semantic_similarity(text, unique_text)
+                    if similarity >= threshold:
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
+                    unique_results.append(result)
+                    unique_texts.append(text)
+            
+            return unique_results
 
         # Query expansion: Generate additional formulations using generic relationship variants and Questions pipeline
         from txtai.pipeline import Questions
@@ -210,6 +261,14 @@ def enhanced_graph_search(embeddings, query, limit=5):
                     if any(causal_kw in text_lower for causal_kw in causal_keywords):
                         adjusted_score *= causal_boost
 
+                    # Apply semantic similarity filtering
+                    semantic_similarity = compute_semantic_similarity(text, query)
+                    if semantic_similarity < semantic_similarity_threshold:
+                        continue
+
+                    # Boost score with semantic similarity
+                    adjusted_score *= (1.0 + semantic_similarity)
+
                     result["score"] = adjusted_score
                     all_results.append(result)
                     seen_texts.add(text)
@@ -253,10 +312,22 @@ def enhanced_graph_search(embeddings, query, limit=5):
             if any(causal_kw in text_lower for causal_kw in causal_keywords):
                 adjusted_score *= causal_boost
 
+            # Apply semantic similarity filtering
+            semantic_similarity = compute_semantic_similarity(text, query)
+            if semantic_similarity < semantic_similarity_threshold:
+                continue
+
+            # Boost score with semantic similarity
+            adjusted_score *= (1.0 + semantic_similarity)
+
             all_results.append({"text": text, "score": adjusted_score})
             seen_texts.add(text)
 
         all_results = sorted(all_results, key=lambda x: x["score"], reverse=True)
+        
+        # Apply deduplication before limiting results
+        all_results = remove_duplicates(all_results)
+        
         final_results = all_results[:limit]
 
         # Fallback: if we have fewer than limit results, relax min_word_count and search again
@@ -282,10 +353,22 @@ def enhanced_graph_search(embeddings, query, limit=5):
                         if any(causal_kw in text_lower for causal_kw in causal_keywords):
                             adjusted_score *= causal_boost
 
+                        # Apply semantic similarity filtering
+                        semantic_similarity = compute_semantic_similarity(text, query)
+                        if semantic_similarity < semantic_similarity_threshold:
+                            continue
+
+                        # Boost score with semantic similarity
+                        adjusted_score *= (1.0 + semantic_similarity)
+
                         result["score"] = adjusted_score
                         all_results.append(result)
                         seen_texts.add(text)
             all_results = sorted(all_results, key=lambda x: x["score"], reverse=True)
+            
+            # Apply deduplication before limiting results
+            all_results = remove_duplicates(all_results)
+            
             final_results = all_results[:limit]
 
         if DEBUG_MODE:
