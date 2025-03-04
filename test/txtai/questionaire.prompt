@@ -1,0 +1,32 @@
+You are an expert in information retrieval and question generation. I have provided you with a Markdown document below. Your task is to read and analyze the document carefully, then generate a set of 10 questions based on its content. These questions will be used to test an embeddings/graph-based search system (graph RAG) that processes the document. The system retrieves contexts from the document to answer queries, and I need to evaluate its performance in terms of relevance (returning accurate content), noise reduction (excluding irrelevant sections), precision (delivering focused answers), and completeness (covering key details).
+
+### Instructions:
+1. **Analyze the Document**: Identify key topics, concepts, relationships, and specific details within the document.
+2. **Generate Diverse Questions**: Create 10 questions that vary in type and complexity, including:
+   - **Factual Questions**: Test retrieval of specific details or definitions (e.g., "What is X?").
+   - **Relational Questions**: Test understanding of connections between concepts (e.g., "How does X relate to Y?").
+   - **Explanatory Questions**: Test causal or process explanations (e.g., "Why does X improve Y?" or "How does X work?").
+   - **Comparative Questions**: Test differentiation of related concepts (e.g., "What’s the difference between X and Y?").
+   - **Broad Questions**: Test completeness by requiring multiple aspects (e.g., "What are the main benefits of X?").
+3. **Ensure Testability**: Each question should:
+   - Have clear, relevant answers in the document to assess precision and relevance.
+   - Potentially retrieve related but irrelevant content to test noise reduction.
+   - Require specific or connected details to evaluate completeness and graph traversal.
+4. **Avoid Ambiguity**: Make questions specific enough to have a single correct focus but not so narrow that they limit retrieval variation.
+5. **Reflect Document Structure**: Base questions on headers, sections, and key terms to align with Markdown parsing.
+
+### Output Format:
+Provide the 10 questions in a numbered list, each prefixed with its type (e.g., "[Factual]", "[Relational]"). After each question, include a brief note (in parentheses) explaining what aspect of the search system it tests.
+
+### Markdown Document:
+[Insert the full text of your Markdown document here]
+
+### Example (for reference, do not include in output):
+If the document were about "Machine Learning":
+1. [Factual] What is supervised learning? (Tests retrieval of a specific definition)
+2. [Relational] How does supervised learning relate to unsupervised learning? (Tests concept connections)
+3. [Explanatory] Why does feature scaling improve model performance? (Tests causal reasoning)
+4. [Comparative] What’s the difference between linear regression and logistic regression? (Tests precision in distinguishing concepts)
+5. [Broad] What are the main applications of neural networks? (Tests completeness across sections)
+
+Now, generate the 10 questions based on the provided document.
