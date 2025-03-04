@@ -49,22 +49,25 @@ def register_search_tools(mcp: FastMCP) -> None:
         
         Uses hybrid search to combine semantic understanding with keyword matching.
         
+        When graph=True, performs graph-based search to find relationships between documents.
+        
         Example: "What are the best practices for error handling?" will find documents about error handling patterns."""
     )
     async def semantic_search(
         ctx: Context,
         query: str,
         limit: Optional[int] = Field(5, description="Maximum number of results to return"),
+        graph: Optional[bool] = Field(True, description="Enable graph-based search to find relationships between documents"),
     ) -> str:
         """Execute semantic search using txtai."""
-        logger.info(f"Semantic search request - query: {query}, limit: {limit}")
+        logger.info(f"Semantic search request - query: {query}, limit: {limit}, graph: {graph}")
         try:
             app = get_txtai_app()
             # Debug embeddings state
             logger.info(f"Embeddings config: {app.config.get('embeddings')}")
             
-            # Get search results
-            results = app.search(query, limit=limit)
+            # Get search results with graph parameter
+            results = app.search(query, limit=limit, graph=graph)
             logger.info(f"Search results (raw): {results}")
             
             # If no results, return empty list
@@ -72,32 +75,55 @@ def register_search_tools(mcp: FastMCP) -> None:
                 logger.info("No search results found")
                 return "[]"
             
-            # Format results to match the expected format
-            formatted_results = []
-            
-            # Get the global document cache
-            document_cache = get_document_cache()
-            logger.info(f"Document cache size: {len(document_cache)}, keys: {list(document_cache.keys())}")
-            
-            for result in results:
-                # Application.search() returns [{"id": id, "score": score}]
-                if isinstance(result, dict) and "id" in result and "score" in result:
-                    doc_id = result["id"]
-                    score = result["score"]
+            # Handle different result types based on graph parameter
+            if graph:
+                # For graph search, results have a different structure
+                formatted_results = []
+                
+                # Process centrality nodes from graph search
+                for node_id in list(results.centrality().keys())[:limit]:
+                    node_data = results.node(node_id)
                     
-                    # Try to get the document text from the cache
-                    text = get_document_from_cache(doc_id) or "No text available"
-                    logger.info(f"Retrieved document {doc_id}: text available: {text != 'No text available'}")
+                    # Format node data for API response
+                    formatted_node = {
+                        "id": node_id,
+                        "text": node_data.get("text", "No text available"),
+                        "score": node_data.get("score", 0.0),
+                        "centrality": results.centrality()[node_id],
+                        "connections": len(results.neighbors(node_id))
+                    }
                     
-                    # Add formatted result
-                    formatted_results.append({
-                        "id": doc_id,
-                        "score": score,
-                        "text": text
-                    })
-            
-            # Return formatted results as JSON
-            return json.dumps(formatted_results)
+                    formatted_results.append(formatted_node)
+                
+                # Return formatted graph results as JSON
+                return json.dumps(formatted_results)
+            else:
+                # Format results for regular search
+                formatted_results = []
+                
+                # Get the global document cache
+                document_cache = get_document_cache()
+                logger.info(f"Document cache size: {len(document_cache)}, keys: {list(document_cache.keys())}")
+                
+                for result in results:
+                    # Application.search() returns [{"id": id, "score": score}]
+                    if isinstance(result, dict) and "id" in result and "score" in result:
+                        doc_id = result["id"]
+                        score = result["score"]
+                        
+                        # Try to get the document text from the cache
+                        text = get_document_from_cache(doc_id) or "No text available"
+                        logger.info(f"Retrieved document {doc_id}: text available: {text != 'No text available'}")
+                        
+                        # Add formatted result
+                        formatted_results.append({
+                            "id": doc_id,
+                            "score": score,
+                            "text": text
+                        })
+                
+                # Return formatted results as JSON
+                return json.dumps(formatted_results)
         except Exception as e:
             logger.error(f"Error in semantic search: {str(e)}\n{traceback.format_exc()}")
             raise
