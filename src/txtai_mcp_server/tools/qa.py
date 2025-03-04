@@ -10,7 +10,6 @@ from pydantic import Field
 
 from ..core.context import TxtAIContext
 from ..core.state import get_txtai_app, get_document_cache
-from .search import get_txtai_context, escape_sql_string
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +104,9 @@ def register_qa_tools(mcp: FastMCP) -> None:
         except Exception as e:
             logger.error(f"Error in question answering: {str(e)}\n{traceback.format_exc()}")
             return f"Error processing question: {str(e)}"
+
+def escape_sql_string(text: str) -> str:
+    """Escape a string for use in SQL queries."""
+    if text is None:
+        return text
+    return text.replace("'", "''")
