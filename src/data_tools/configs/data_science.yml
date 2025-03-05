@@ -1,0 +1,65 @@
+# Configuration optimized for data science content
+# Examples: ML tutorials, data analysis guides, statistics explanations
+
+# Main path configuration
+path: .txtai/kb-datascience
+content: true
+writable: true
+
+# Text extraction configuration
+textractor:
+  paragraphs: true
+  minlength: 50
+  cleantext: true
+  backend: "text"
+
+# Embedding configuration
+embeddings:
+  # Model good for technical and scientific content
+  path: sentence-transformers/nli-mpnet-base-v2  # Good for data science terminology
+  content: true
+  normalize: true
+  hybrid: true
+  gpu: true
+  
+  # Storage configuration
+  writable: true
+  backend: faiss
+  storagetype: sqlite
+  
+  # Scoring methods
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.001
+  
+  # Graph configuration - optimized for data science relationships
+  graph:
+    backend: "networkx"
+    batchsize: 256
+    limit: 5         # Focused connections for clearer relationships
+    minscore: 0.4    # Higher threshold for quality connections
+    approximate: true
+    topics:
+      algorithm: "louvain"
+      terms: 4
+    centrality: "betweenness"  # Good for finding bridging concepts
+    directed: true
+    weight: "similarity"
+    
+    # Graph search options
+    search:
+      max_hops: 1    # Limited hops for more focused results
+      use_centrality: true
+      min_score: 0.5  # Higher threshold for relevance
+
+# Search configuration - optimized for data science queries
+search:
+  limit: 3           # Focused results
+  minscore: 0.5      # Higher threshold for quality
+  rerank: true
+  weights:
+    bm25: 0.5
+    similarity: 0.5

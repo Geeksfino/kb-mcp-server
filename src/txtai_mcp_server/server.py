@@ -78,7 +78,8 @@ server = FastMCP("TxtAI Server", lifespan=txtai_lifespan)
 # Register tools with the server
 register_search_tools(server)
 register_qa_tools(server)
-logger.info("Registered search and QA tools with module-level server")
+register_retrieve_tools(server)
+logger.info("Registered search, QA, and retrieve tools with module-level server")
 
 async def run_server(transport: str = 'sse', host: str = 'localhost', port: int = 8000):
     """Run the TxtAI MCP server with the specified transport.

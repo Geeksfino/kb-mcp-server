@@ -1,0 +1,68 @@
+# Base configuration template for txtai embeddings
+# This serves as a foundation for domain-specific configurations
+
+# Main path configuration
+path: .txtai/kb-base
+content: true
+writable: true
+
+# Text extraction configuration
+textractor:
+  paragraphs: true
+  minlength: 50
+  cleantext: true
+  backend: "text"  # Default backend, can be overridden
+
+# Embedding configuration
+embeddings:
+  path: sentence-transformers/all-mpnet-base-v2  # General-purpose model
+  content: true
+  normalize: true
+  hybrid: true
+  gpu: true  # Use GPU if available
+  
+  # Storage configuration
+  writable: true
+  
+  # Vector storage (for embeddings)
+  backend: faiss  # Fast vector similarity search
+  
+  # Document storage (for content and metadata)
+  storagetype: sqlite  # SQL database for document storage
+  
+  # Scoring methods
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.001
+  
+  # Graph configuration
+  graph:
+    backend: "networkx"
+    batchsize: 256
+    limit: 10
+    minscore: 0.3
+    approximate: true
+    topics:
+      algorithm: "louvain"
+      terms: 4
+    centrality: "pagerank"
+    directed: true
+    weight: "similarity"
+    
+    # Graph search options
+    search:
+      max_hops: 2
+      use_centrality: true
+      min_score: 0.3
+
+# Search configuration
+search:
+  limit: 5
+  minscore: 0.3
+  rerank: true
+  weights:
+    bm25: 0.5
+    similarity: 0.5

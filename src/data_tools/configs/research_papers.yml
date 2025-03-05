@@ -1,0 +1,66 @@
+# Configuration optimized for academic and research papers
+# Examples: Scientific papers, academic articles, research publications
+
+# Main path configuration
+path: .txtai/kb-research
+content: true
+writable: true
+
+# Text extraction configuration
+textractor:
+  paragraphs: true
+  sections: true    # Important for research paper structure
+  minlength: 100    # Research papers have longer meaningful passages
+  cleantext: true
+  backend: "text"
+
+# Embedding configuration
+embeddings:
+  # Model specifically trained on scientific papers
+  path: sentence-transformers/allenai-specter  # Trained on scientific papers
+  content: true
+  normalize: true
+  hybrid: true      # Critical for capturing scientific terminology
+  gpu: true
+  
+  # Storage configuration
+  writable: true
+  backend: faiss
+  storagetype: sqlite
+  
+  # Scoring methods - balanced for research content
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.001
+  
+  # Graph configuration - optimized for citation-like networks
+  graph:
+    backend: "networkx"
+    batchsize: 256
+    limit: 20        # Higher limit for dense citation networks
+    minscore: 0.35   # Higher quality connections for research
+    approximate: true
+    topics:
+      algorithm: "louvain"
+      terms: 8       # More terms for complex research topics
+    centrality: "eigenvector"  # Better for authority in citation networks
+    directed: true
+    weight: "similarity"
+    
+    # Graph search options
+    search:
+      max_hops: 3    # More hops to follow citation-like patterns
+      use_centrality: true
+      min_score: 0.3
+
+# Search configuration - balanced for research queries
+search:
+  limit: 10
+  minscore: 0.3
+  rerank: true
+  weights:
+    bm25: 0.4
+    similarity: 0.6  # Higher weight for semantic similarity in research

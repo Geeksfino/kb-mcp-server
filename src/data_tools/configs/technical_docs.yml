@@ -1,0 +1,66 @@
+# Configuration optimized for technical documentation
+# Examples: API docs, product manuals, technical guides
+
+# Main path configuration
+path: .txtai/kb-techdocs
+content: true
+writable: true
+
+# Text extraction configuration
+textractor:
+  paragraphs: true
+  sections: true  # Preserve section structure for technical docs
+  minlength: 30   # Technical docs often have shorter meaningful paragraphs
+  cleantext: true
+  backend: "text"
+
+# Embedding configuration
+embeddings:
+  # Model optimized for technical/scientific content
+  path: sentence-transformers/allenai-specter  # Better for technical content
+  content: true
+  normalize: true
+  hybrid: true     # Important for technical terminology
+  gpu: true
+  
+  # Storage configuration
+  writable: true
+  backend: faiss
+  storagetype: sqlite
+  
+  # Scoring methods - emphasize keyword matching for technical terms
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.0005  # Lower cutoff to catch technical terms
+  
+  # Graph configuration
+  graph:
+    backend: "networkx"
+    batchsize: 256
+    limit: 15       # More connections for technical docs
+    minscore: 0.25  # Lower threshold to capture more technical relationships
+    approximate: true
+    topics:
+      algorithm: "louvain"
+      terms: 6      # More terms for technical topics
+    centrality: "betweenness"  # Better for technical concept relationships
+    directed: true
+    weight: "similarity"
+    
+    # Graph search options
+    search:
+      max_hops: 2
+      use_centrality: true
+      min_score: 0.25
+
+# Search configuration - emphasize keyword matching for technical queries
+search:
+  limit: 7
+  minscore: 0.25
+  rerank: true
+  weights:
+    bm25: 0.7       # Higher weight for keyword matching
+    similarity: 0.3 # Lower weight for semantic similarity

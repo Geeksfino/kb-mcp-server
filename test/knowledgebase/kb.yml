@@ -2,45 +2,68 @@ path: .txtai/kb-test  # Where to save the index
 content: true  # Store document content
 writable: true  # Enable index writing
 
+# Text extraction configuration
+textractor:
+  paragraphs: true
+  minlength: 50
+  cleantext: true
+  backend: "text"  # Use text backend instead of Tika
+
 # Embedding configuration
 embeddings:
   path: sentence-transformers/nli-mpnet-base-v2  # Model path
-  normalize: true  # Normalize embeddings
-  hybrid: true  # Enable hybrid search
+  content: true
+  normalize: true
+  hybrid: true
   gpu: true  # Use GPU if available
-  storagetype: sqlite  # Storage type for better content storage
-  storagepath: .txtai/embeddings/kb-test
+  
+  # Storage configuration
   writable: true
-  content: true  # Store document content
+  
+  # Vector storage (for embeddings)
+  backend: faiss  # Fast vector similarity search
+  
+  # Document storage (for content and metadata)
+  storagetype: sqlite  # SQL database for document storage
+  
+  # Scoring methods
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.001
   
   # Knowledge graph configuration
   graph:
-    backend: networkx  # Graph backend (networkx is recommended)
+    backend: "networkx"  # Graph backend (networkx is recommended)
     batchsize: 256  # Batch query size for graph building
-    limit: 5  # Max connections per node
-    minscore: 0.6  # Minimum similarity score for edges
+    limit: 5  # Reduced from 10 to 5 for more focused results
+    minscore: 0.4  # Minimum similarity score for edges
     approximate: true  # Only run queries for nodes without edges (more efficient)
     
     # Topic extraction configuration
     topics:
-      algorithm: louvain  # Community detection algorithm (louvain, leiden, etc.)
+      algorithm: "louvain"  # Community detection algorithm (louvain, leiden, etc.)
       terms: 4  # Number of terms for topic labels
       
     # Advanced graph options
-    centrality: pagerank  # Centrality algorithm (pagerank, betweenness, etc.)
-    directed: false  # Whether the graph is directed
-    weight: similarity  # Edge weight attribute
+    centrality: "betweenness"  # Centrality algorithm (pagerank, betweenness, etc.)
+    directed: true  # Whether the graph is directed
+    weight: "similarity"  # Edge weight attribute
     
     # Graph search options
     search:
-      max_hops: 2  # Maximum hops for graph traversal
+      max_hops: 1  # Reduced from 3 to 1 for better relevance
       use_centrality: true  # Use centrality for ranking
-      min_score: 0.3  # Minimum similarity score for results
+      min_score: 0.5  # Increased from 0.3 to 0.5 for better relevance
+      limit: 3  # Limit the number of results to the most relevant ones
   
-  # Scoring configuration
-  scoring:
-    method: bm25  # Options: bm25, tfidf, sif, pgtext
-    normalize: true  # Normalize scores between 0-1
-    terms:
-      cachelimit: 1000000000  # Memory limit for indexing
-      cutoff: 0.001  # Cutoff for common terms
+# Search configuration
+search:
+  limit: 3  # Limit to top 3 results
+  minscore: 0.5  # Minimum score threshold
+  rerank: true  # Enable reranking of results
+  weights:
+    bm25: 0.5  # Weight for keyword matching
+    similarity: 0.5  # Weight for semantic similarity

@@ -1,0 +1,67 @@
+# Configuration optimized for code repositories and documentation
+# Examples: Code comments, docstrings, README files, API documentation
+
+# Main path configuration
+path: .txtai/kb-code
+content: true
+writable: true
+
+# Text extraction configuration
+textractor:
+  paragraphs: false   # Code often doesn't follow paragraph structure
+  lines: true         # Line-based extraction is better for code
+  segments: true      # Segment by function/class blocks
+  minlength: 20       # Code comments can be short but meaningful
+  cleantext: true
+  backend: "text"
+
+# Embedding configuration
+embeddings:
+  # Model better suited for code and technical content
+  path: sentence-transformers/all-MiniLM-L6-v2  # Lighter model, good for code snippets
+  content: true
+  normalize: true
+  hybrid: true        # Critical for code terminology and function names
+  gpu: true
+  
+  # Storage configuration
+  writable: true
+  backend: faiss
+  storagetype: sqlite
+  
+  # Scoring methods - emphasize exact matching for code
+  scoring: 
+    method: bm25
+    normalize: true
+    terms:
+      cachelimit: 1000000000
+      cutoff: 0.0001  # Very low cutoff to catch variable/function names
+  
+  # Graph configuration - optimized for code dependencies
+  graph:
+    backend: "networkx"
+    batchsize: 256
+    limit: 25         # Higher limit for code dependencies
+    minscore: 0.2     # Lower threshold to capture more code relationships
+    approximate: true
+    topics:
+      algorithm: "louvain"
+      terms: 5
+    centrality: "degree"  # Better for dependency hubs in code
+    directed: true
+    weight: "similarity"
+    
+    # Graph search options
+    search:
+      max_hops: 2      # Follow import/dependency chains
+      use_centrality: true
+      min_score: 0.2   # Lower threshold for code matches
+
+# Search configuration - heavily emphasize keyword matching for code
+search:
+  limit: 15           # More results for code searches
+  minscore: 0.2
+  rerank: true
+  weights:
+    bm25: 0.8         # Strong emphasis on exact term matching
+    similarity: 0.2   # Less emphasis on semantic similarity

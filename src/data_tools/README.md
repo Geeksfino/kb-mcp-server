@@ -1,15 +1,16 @@
 # Knowledge Base System
 
-A comprehensive knowledge base system for ingesting documents, generating embeddings, building a knowledge graph, and searching through documents using various search strategies.
+A comprehensive knowledge base system for ingesting documents, generating embeddings, and searching through documents using txtai's powerful capabilities.
 
 ## Overview
 
 This system provides a command-line interface for building and searching a knowledge base:
 
-1. **Document Loading**: Ingest various document types (PDF, text, Markdown, HTML, Word) into a pipeline.
+1. **Document Processing**: Ingest various document types directly using txtai's built-in capabilities.
 2. **Embedding Generation**: Process the documents into embeddings for similarity search.
-3. **Knowledge Graph Construction**: Build a graph representation of document relationships.
-4. **Search Interface**: Search the knowledge base using different strategies.
+3. **Graph-based Search**: Utilize txtai's graph capabilities for enhanced search results.
+4. **Domain-specific Configurations**: Optimize search parameters for different content domains.
+5. **Generic Query Enhancement**: Dynamically boost relevance based on query terms.
 
 ## Command-Line Interface
 
@@ -18,89 +19,65 @@ The system provides a command-line interface for building and searching the know
 ### Building the Knowledge Base
 
 ```bash
-python -m data_tools.cli build path/to/documents --recursive --build-graph --find-communities
+python -m data_tools.cli build --config path/to/config.yml --input path/to/documents --recursive
 ```
-
-Options:
-- `--recursive`: Process directories recursively
-- `--extensions`: File extensions to process (e.g., `--extensions pdf txt md`)
-- `--output`: Output path for embeddings
-- `--build-graph`: Build knowledge graph
-- `--graph-path`: Path to save knowledge graph
-- `--find-communities`: Find communities in knowledge graph
-- `--config`: Path to configuration file
 
 ### Searching the Knowledge Base
 
 ```bash
-python -m data_tools.cli search "your query" --search-type hybrid --limit 10
+python -m data_tools.cli retrieve path/to/embeddings "your search query" --graph
 ```
 
-Options:
-- `--search-type`: Type of search to perform:
-  - `similar`: Semantic search using only dense vectors (embeddings)
-  - `exact`: Keyword search using only sparse vectors (BM25)
-  - `hybrid`: Combined search using both dense and sparse vectors (default)
-  - `graph`: Graph-based search that finds related documents through connections
-- `--limit`: Maximum number of results to return (default: 5)
-- `--depth`: Maximum depth for graph traversal (for custom graph search, default: 2)
-- `--graph-path`: Path to knowledge graph (for graph search)
-- `--show-metadata`: Show document metadata
-- `--extract-answers`: Extract answers using QA
-- `--config`: Path to configuration file
+## Domain-Specific Configuration Templates
 
-### Example Usage
+The system includes a set of pre-configured templates optimized for different content domains:
 
-1. Build a knowledge base from a directory of documents:
-   ```bash
-   python -m data_tools.cli build ~/documents/research --recursive --extensions pdf txt md --build-graph
-   ```
+- `base.yml`: Foundation with common settings
+- `technical_docs.yml`: For technical documentation
+- `research_papers.yml`: For academic/scientific papers
+- `code_repositories.yml`: For code documentation
+- `general_knowledge.yml`: For encyclopedic content
+- `data_science.yml`: For data science content
 
-2. Search the knowledge base using hybrid search:
-   ```bash
-   python -m data_tools.cli search "What is machine learning?" --search-type hybrid --limit 5
-   ```
+### Using Configuration Templates
 
-3. Search using graph-based traversal:
-   ```bash
-   python -m data_tools.cli search "How does reinforcement learning work?" --search-type graph --depth 2
-   ```
+Use the configuration helper to work with templates:
+
+```bash
+# List available templates
+python -m data_tools.configs.config_helper list
+
+# View a template
+python -m data_tools.configs.config_helper view data_science.yml
+
+# Create a custom configuration
+python -m data_tools.configs.config_helper create data_science.yml custom_config.yml --path .txtai/kb-custom --max-hops 1 --min-score 0.5
+```
+
+## Generic Query Enhancement
+
+The system implements a generic query enhancement approach that:
+
+1. Extracts key terms from the query
+2. Boosts result scores based on term matches
+3. Re-ranks results based on enhanced scores
+
+This approach works across any domain without hard-coding specific keywords and adapts automatically to different query types.
+
+## Architecture
+
+The system is built on top of txtai and follows these principles:
+
+1. Maximize leverage of txtai's built-in functionality
+2. Avoid reinventing or overengineering solutions
+3. Use txtai's API as designed rather than building parallel implementations
+
+## Dependencies
+
+- Python 3.8+
+- txtai
+- Various document processing libraries (depending on document types)
 
 ## Configuration
 
-The system can be configured using a YAML file or environment variables:
-
-```yaml
-# Example configuration
-path: ~/.txtai/embeddings
-content: true
-writable: true
-embeddings:
-  path: sentence-transformers/all-MiniLM-L6-v2
-  storagepath: ~/.txtai/embeddings
-  gpu: true
-  normalize: true
-  hybrid: true
-  writable: true
-graph:
-  similarity: 0.75
-  limit: 10
-```
-
-Environment variables:
-- `KB_CONFIG`: Path to configuration file
-- `KB_MODEL_PATH`: Path to embedding model
-- `KB_INDEX_PATH`: Path to store embeddings
-- `KB_MODEL_GPU`: Whether to use GPU for embeddings
-- `KB_HYBRID_SEARCH`: Whether to enable hybrid search
-
-## Components
-
-The system consists of the following components:
-
-1. **DocumentLoader**: Handles the ingestion of various document types
-2. **DocumentProcessor**: Converts documents into embeddings for similarity search
-3. **KnowledgeGraph**: Builds a graph representation of document relationships
-4. **KnowledgeSearch**: Provides different search strategies against the knowledge base
-
-These components are used internally by the CLI and can also be used programmatically if needed.
+See the `configs` directory for example configurations and the configuration helper utility.
