@@ -19,6 +19,7 @@ from txtai_mcp_server.core.context import TxtAIContext
 from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app
 from txtai_mcp_server.tools.search import register_search_tools
 from txtai_mcp_server.tools.qa import register_qa_tools
+from txtai_mcp_server.tools.retrieve import register_retrieve_tools
 
 # Configure logging
 logging.basicConfig(
