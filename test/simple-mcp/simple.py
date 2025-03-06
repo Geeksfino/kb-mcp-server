@@ -199,7 +199,7 @@ class MCPClient:
                 # Get the search result
                 result = await self.session.call_tool(
                     "semantic_search",
-                    {"query": query, "limit": 1}
+                    {"query": query, "limit": 1, "graph": False}
                 )
                 
                 try:
