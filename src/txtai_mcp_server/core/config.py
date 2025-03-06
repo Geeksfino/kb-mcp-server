@@ -76,7 +76,7 @@ class TxtAISettings(BaseSettings):
             else:
                 # For directories, load directly
                 logger.info(f"Loading embeddings from directory: {self.embeddings_path}")
-                return Application(self.embeddings_path)
+                return Application(f"path: {self.embeddings_path}")
         
         # Priority 2: YAML config path
         elif self.yaml_config:
