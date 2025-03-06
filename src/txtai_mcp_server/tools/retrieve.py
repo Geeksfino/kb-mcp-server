@@ -44,17 +44,73 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
         """
         logger.info(f"Retrieve context request - query: {query}, limit: {limit}, min_similarity: {min_similarity}, causal_boost: {causal_boost}")
         try:
+            # Get the txtai application
             app = get_txtai_app()
-            embeddings = app.embeddings
             
-            # Perform enhanced graph search
-            results = enhanced_graph_search(embeddings, query, limit)
+            # Extract key terms from the query to use for relevance boosting
+            query_terms = set(query.lower().split())
+            # Remove common stop words
+            stop_words = {"what", "are", "is", "the", "for", "and", "or", "to", "in", "of", "a", "an"}
+            query_terms = query_terms - stop_words
             
-            # Format results as JSON
-            if not results:
+            # Perform the search with graph=True
+            # Get more results initially for filtering
+            results = app.search(query, limit=max(10, limit * 2), graph=True)
+            
+            # For graph results, enhance using centrality and query relevance
+            if hasattr(results, 'centrality') and callable(results.centrality):
+                # Get all nodes with their centrality scores
+                nodes_with_scores = []
+                for node_id in results.centrality().keys():
+                    node = results.node(node_id)
+                    if node and "text" in node:
+                        # Base score from centrality
+                        score = results.centrality()[node_id]
+                        
+                        # Boost score based on query term presence
+                        text = node["text"].lower()
+                        term_matches = sum(1 for term in query_terms if term in text)
+                        if term_matches > 0:
+                            # Boost proportional to the number of matching terms
+                            score *= (1 + (0.2 * term_matches))
+                            
+                            # Apply causal boost if requested
+                            if causal_boost:
+                                causal_keywords = {"causes", "leads to", "improves", "boosts", "results in", "reduces", "enhances"}
+                                if any(keyword in text for keyword in causal_keywords):
+                                    score *= 1.5
+                        
+                        # Add to candidates if score meets minimum threshold
+                        if score >= min_similarity:
+                            nodes_with_scores.append((node_id, score, node["text"]))
+                
+                # Sort by enhanced score and limit
+                nodes_with_scores.sort(key=lambda x: x[1], reverse=True)
+                nodes_with_scores = nodes_with_scores[:limit]
+                
+                # Convert to the format expected by format_graph_results
+                graph_results = [{"text": text, "score": score} for _, score, text in nodes_with_scores]
+            else:
+                # Fallback if centrality not available
+                graph_results = []
+                for x in list(results)[:limit]:
+                    if "text" in x:
+                        graph_results.append({"text": x["text"], "score": x.get("score", 0.5)})
+            
+            # Format results
+            if graph_results:
+                # Format results for JSON output
+                formatted_results = []
+                for result in graph_results:
+                    formatted_results.append({
+                        "text": result["text"],
+                        "score": float(result["score"])  # Ensure score is a float for JSON serialization
+                    })
+                return json.dumps(formatted_results)
+            else:
+                # Return empty results
                 return json.dumps([])
-            
-            return json.dumps(results)
+                
         except Exception as e:
             logger.error(f"Error in retrieve context: {str(e)}\n{traceback.format_exc()}")
             return f"Error processing retrieve context: {str(e)}"
