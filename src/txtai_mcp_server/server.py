@@ -103,7 +103,8 @@ async def run_server(transport: str = 'sse', host: str = 'localhost', port: int 
     # Register tools
     register_search_tools(mcp)
     register_qa_tools(mcp)
-    logger.info("Registered search and QA tools")
+    register_retrieve_tools(mcp)
+    logger.info("Registered search, QA, and retrieve tools with module-level server")
 
     # Handle shutdown gracefully
     def handle_shutdown(signum, frame):
