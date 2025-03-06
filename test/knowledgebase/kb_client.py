@@ -100,7 +100,23 @@ class KnowledgeBaseClient:
             response = "No results found"
             for content in result.content:
                 if content.type == "text":
-                    response = content.text
+                    # Parse the JSON response
+                    try:
+                        results = json.loads(content.text)
+                        if results:
+                            # Format the results in a more readable way
+                            formatted_results = []
+                            for i, item in enumerate(results, 1):
+                                # Format with score as a percentage and text content
+                                score_pct = item.get("score", 0) * 100
+                                formatted_results.append(f"Result {i} ({score_pct:.1f}%):\n{item.get('text', '')}\n")
+                            
+                            response = "\n".join(formatted_results)
+                        else:
+                            response = "No results found"
+                    except json.JSONDecodeError:
+                        # If not valid JSON, return as is
+                        response = content.text
                     break
             
             return response
