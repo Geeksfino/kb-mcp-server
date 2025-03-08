@@ -135,8 +135,27 @@ def build_command(args):
     Args:
         args: Command-line arguments
     """
-    # Use config from args or global args
-    config_path = args.config if hasattr(args, 'config') and args.config else args.global_config
+    # Check if required arguments are provided
+    if not ((hasattr(args, 'input') and args.input) or 
+            (hasattr(args, 'json_input') and args.json_input)):
+        logger.error("Error: No input sources provided.")
+        logger.error("Please provide at least one input source using --input or --json_input")
+        print("\nBuild command usage:")
+        print("  python -m data_tools.cli build --input PATH [PATH ...] [--config CONFIG]")
+        print("  python -m data_tools.cli build --json_input JSON_FILE [--config CONFIG]")
+        print("\nOptions:")
+        print("  --input PATH       Path to input files or directories")
+        print("  --json_input PATH  Path to JSON file containing a list of documents")
+        print("  --extensions EXT   Comma-separated list of file extensions to include")
+        print("  --config PATH      Path to configuration file")
+        return
+        
+    # Use config from args or try to find a default config
+    config_path = args.config if hasattr(args, 'config') and args.config else None
+    
+    # If no config provided via args, try to find one
+    if not config_path:
+        config_path = find_config_file()
     
     if config_path:
         # Convert to absolute path if it's a relative path
@@ -321,8 +340,9 @@ def retrieve_command(args):
                             # Boost proportional to the number of matching terms
                             score *= (1 + (0.2 * term_matches))
                             
-                        # Add to candidates
-                        nodes_with_scores.append((node_id, score, node["text"]))
+                        # Add to candidates if score meets minimum threshold
+                        if score >= args.min_similarity:
+                            nodes_with_scores.append((node_id, score, node["text"]))
                 
                 # Sort by enhanced score and limit
                 nodes_with_scores.sort(key=lambda x: x[1], reverse=True)
@@ -335,7 +355,9 @@ def retrieve_command(args):
                 graph_results = []
                 for x in list(results)[:args.limit]:
                     if "text" in x:
-                        graph_results.append({"text": x["text"], "score": x.get("score", 0.5)})
+                        score = x.get("score", 0.5)
+                        if score >= args.min_similarity:
+                            graph_results.append({"text": x["text"], "score": score})
         else:
             # For regular search results, enhance based on query relevance
             enhanced_results = []
@@ -351,8 +373,9 @@ def retrieve_command(args):
                         # Boost proportional to the number of matching terms
                         score *= (1 + (0.1 * term_matches))
                     
-                    # Add to candidates
-                    enhanced_results.append({"text": result["text"], "score": score})
+                    # Add to candidates if score meets minimum threshold
+                    if score >= args.min_similarity:
+                        enhanced_results.append({"text": result["text"], "score": score})
             
             # Sort by enhanced score and limit
             enhanced_results.sort(key=lambda x: x["score"], reverse=True)
@@ -753,6 +776,7 @@ def main():
     retrieve_parser.add_argument("query", type=str, help="Search query")
     retrieve_parser.add_argument("--limit", type=int, default=5, help="Maximum number of results to return")
     retrieve_parser.add_argument("--graph", action="store_true", help="Enable graph search")
+    retrieve_parser.add_argument("--min_similarity", type=float, default=0.3, help="Minimum similarity threshold for results")
     retrieve_parser.set_defaults(func=retrieve_command)
     
     # Generate command
