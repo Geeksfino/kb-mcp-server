@@ -159,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument('--embeddings', type=str, help='Path to embeddings directory or archive file')
     parser.add_argument('--transport', type=str, default='stdio', choices=['sse', 'stdio'], 
                         help='Transport to use for MCP server (default: stdio)')
-    parser.add_argument('--host', type=str, default='localhost',
+    parser.add_argument('--host', type=str, default='0.0.0.0',
                         help='Host to bind to when using SSE transport (default: localhost)')
     parser.add_argument('--port', type=int, default=8000,
                         help='Port to bind to when using SSE transport (default: 8000)')
