@@ -7,6 +7,5 @@ embeddings:
   hybrid: true
   gpu: true
   storagetype: memory
-  storagepath: .txtai/embeddings/simple
   writable: true
   content: true
