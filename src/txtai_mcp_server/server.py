@@ -16,7 +16,8 @@ from txtai.app import Application
 
 from txtai_mcp_server.core.config import TxtAISettings
 from txtai_mcp_server.core.context import TxtAIContext
-from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app
+from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app, set_causal_config
+from txtai_mcp_server.tools.causal_config import CausalBoostConfig, DEFAULT_CAUSAL_CONFIG
 from txtai_mcp_server.tools.search import register_search_tools
 from txtai_mcp_server.tools.qa import register_qa_tools
 from txtai_mcp_server.tools.retrieve import register_retrieve_tools
@@ -39,8 +40,14 @@ logging.getLogger('txtai_mcp_server').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def txtai_lifespan(mcp: FastMCP) -> AsyncIterator[Dict[str, Any]]:
-    """Manage txtai application lifecycle."""
+async def txtai_lifespan(mcp: FastMCP, enable_causal_boost: bool = False, causal_config_path: Optional[str] = None) -> AsyncIterator[Dict[str, Any]]:
+    """Manage txtai application lifecycle.
+    
+    Args:
+        mcp: FastMCP server instance
+        enable_causal_boost: Whether to enable causal boost feature
+        causal_config_path: Path to custom causal boost configuration file
+    """
     logger.info("=== Starting txtai server (lifespan) ===")
     try:
         # Initialize application
@@ -64,6 +71,21 @@ async def txtai_lifespan(mcp: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         set_txtai_app(app)
         logger.info("Created txtai application")
         
+        # Initialize causal boost configuration if enabled
+        if enable_causal_boost:
+            try:
+                if causal_config_path:
+                    logger.info(f"Loading custom causal boost configuration from {causal_config_path}")
+                    causal_config = CausalBoostConfig.load_from_file(causal_config_path)
+                else:
+                    logger.info("Using default causal boost configuration")
+                    causal_config = DEFAULT_CAUSAL_CONFIG
+                set_causal_config(causal_config)
+                logger.info("Initialized causal boost configuration")
+            except Exception as e:
+                logger.error(f"Failed to initialize causal boost configuration: {e}")
+                raise
+        
         # Yield serializable context
         yield {"status": "ready"}
         logger.info("Server is ready")
@@ -82,7 +104,8 @@ register_qa_tools(server)
 register_retrieve_tools(server)
 logger.info("Registered search, QA, and retrieve tools with module-level server")
 
-async def run_server(transport: str = 'sse', host: str = 'localhost', port: int = 8000):
+async def run_server(transport: str = 'sse', host: str = 'localhost', port: int = 8000,
+               enable_causal_boost: bool = False, causal_config_path: Optional[str] = None):
     """Run the TxtAI MCP server with the specified transport.
     
     Args:
@@ -94,7 +117,7 @@ async def run_server(transport: str = 'sse', host: str = 'localhost', port: int 
     logger.info("Creating FastMCP instance...")
     mcp = FastMCP(
         "TxtAI Server",
-        lifespan=txtai_lifespan,
+        lifespan=lambda mcp: txtai_lifespan(mcp, enable_causal_boost, causal_config_path),
         host=host,
         port=port
     )
@@ -141,14 +164,27 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=8000,
                         help='Port to bind to when using SSE transport (default: 8000)')
     
+    # Add causal boost arguments
+    causal_group = parser.add_argument_group('Causal Boost Configuration')
+    causal_group.add_argument('--enable-causal-boost', action='store_true',
+                        help='Enable causal boost feature for enhanced relevance scoring')
+    causal_group.add_argument('--causal-config', type=str,
+                        help='Path to custom causal boost configuration YAML file')
+    
     args = parser.parse_args()
     
     # Set environment variable if embeddings path is provided
     if args.embeddings:
         os.environ["TXTAI_EMBEDDINGS"] = args.embeddings
     
-    # Run the server with the specified transport
-    asyncio.run(run_server(transport=args.transport, host=args.host, port=args.port))
+    # Run the server with the specified transport and causal boost settings
+    asyncio.run(run_server(
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
+        enable_causal_boost=args.enable_causal_boost,
+        causal_config_path=args.causal_config
+    ))
 
 # This function is called by the MCP CLI
 def run():

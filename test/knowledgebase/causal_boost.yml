@@ -1,0 +1,156 @@
+# Custom causal boost configuration
+patterns:
+  en:  # English patterns
+    general:
+      keywords:
+        - causes
+        - leads to
+        - results in
+        - triggers
+        - impacts
+        - contributes to
+        - enables
+        - promotes
+      negation:
+        - not cause
+        - doesn't cause
+        - no evidence
+        - doesn't lead to
+      intent:
+        - why
+        - how does
+        - what causes
+        - reason for
+        - what leads to
+      stopwords:
+        - what
+        - where
+        - when
+        - why
+        - how
+        - which
+        - am
+        - is
+        - are
+        - the
+        - a
+        - an
+        - and
+        - or
+        - to
+        - in
+        - of
+    technical:
+      keywords:
+        - correlates with
+        - determines
+        - facilitates
+        - predicts
+        - indicates
+        - implies
+        - depends on
+      negation:
+        - no correlation
+        - doesn't determine
+        - no indication
+        - not related
+      intent:
+        - what determines
+        - how does it affect
+        - what influences
+      stopwords:
+        - what
+        - where
+        - when
+        - why
+        - how
+        - which
+        - am
+        - is
+        - are
+        - the
+        - a
+        - an
+        - and
+        - or
+        - to
+        - in
+        - of
+  zh:  # Chinese patterns
+    general:
+      keywords:
+        - 导致
+        - 引起
+        - 造成
+        - 改善
+        - 提高
+        - 触发
+        - 影响
+        - 促进
+      negation:
+        - 不会导致
+        - 没有证据
+        - 不会引起
+        - 不会造成
+      intent:
+        - 为什么
+        - 如何
+        - 什么原因
+        - 什么导致
+      stopwords:
+        - 什么
+        - 怎么
+        - 如何
+        - 为什么
+        - 的
+        - 了
+        - 和
+        - 或
+        - 在
+        - 是
+        - 有
+    technical:
+      keywords:
+        - 相关
+        - 决定
+        - 促进
+        - 影响
+        - 预测
+        - 指示
+        - 依赖于
+      negation:
+        - 没有相关
+        - 不相关
+        - 不会决定
+        - 无关
+      intent:
+        - 什么决定
+        - 如何影响
+        - 什么因素
+      stopwords:
+        - 什么
+        - 怎么
+        - 如何
+        - 为什么
+        - 的
+        - 了
+        - 和
+        - 或
+        - 在
+        - 是
+        - 有
+
+# Custom boost multipliers
+boosts:
+  causal_intent: 1.4      # Higher boost for explicit causal queries
+  general_query: 1.2      # Higher base boost
+  domain_specific: 1.3    # Higher domain-specific boost
+  multiple_term: 0.15     # Higher per-term boost
+  negation: 0.6          # Stronger negation penalty
+
+# Language settings
+default_language: en
+default_domain: general
+supported_languages:
+  - en
+  - zh

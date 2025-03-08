@@ -27,6 +27,7 @@ dependencies = [
     "pandas>=1.3.0",  # For tabular data processing
     "python-louvain>=0.16.0",  # For community detection in graphs
     "markdown>=3.3.0",  # For markdown processing
+    "fast-langdetect>=1.0.3",  # For language detection in causal boost
 ]
 
 [project.scripts]
@@ -51,6 +52,7 @@ packages = ["src/txtai_mcp_server"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 

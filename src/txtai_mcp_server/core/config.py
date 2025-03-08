@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal, Union, Tuple
 
-from pydantic import validator
+from pydantic import field_validator, ConfigDict
 from pydantic_settings import BaseSettings
 from txtai.app import Application
 
@@ -34,7 +34,8 @@ class TxtAISettings(BaseSettings):
     model_normalize: bool = True
     store_content: bool = True
     
-    @validator("yaml_config", "index_path", "embeddings_path")
+    @field_validator("yaml_config", "index_path", "embeddings_path")
+    @classmethod
     def expand_path(cls, v: Optional[str]) -> Optional[str]:
         """Expand user path if present."""
         return str(Path(v).expanduser()) if v else v
@@ -123,8 +124,9 @@ class TxtAISettings(BaseSettings):
         logger.info(f"Successfully loaded embeddings from: {embeddings_path}")
         return settings, app
     
-    class Config:
-        env_prefix = "TXTAI_"  # Look for TXTAI_ prefixed env vars
-        extra = "allow"  # Allow extra fields from env vars
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = ConfigDict(
+        env_prefix="TXTAI_",  # Look for TXTAI_ prefixed env vars
+        extra="allow",  # Allow extra fields from env vars
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
