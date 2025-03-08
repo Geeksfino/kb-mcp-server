@@ -53,6 +53,10 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
             stop_words = {"what", "are", "is", "the", "for", "and", "or", "to", "in", "of", "a", "an"}
             query_terms = query_terms - stop_words
             
+            # Detect if the query has causal intent
+            has_causal_intent = detect_causal_intent(query) if causal_boost else False
+            logger.info(f"Query causal intent detection: {has_causal_intent}")
+            
             # Perform the search with graph=True
             # Get more results initially for filtering
             results = app.search(query, limit=max(10, limit * 2), graph=True)
@@ -74,11 +78,43 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
                             # Boost proportional to the number of matching terms
                             score *= (1 + (0.2 * term_matches))
                             
-                            # Apply causal boost if requested
+                            # Apply causal boost if requested and either:
+                            # 1. The query has causal intent, or
+                            # 2. We're in a fallback mode where causal_boost is enabled but no causal intent was detected
                             if causal_boost:
-                                causal_keywords = {"causes", "leads to", "improves", "boosts", "results in", "reduces", "enhances"}
-                                if any(keyword in text for keyword in causal_keywords):
-                                    score *= 1.5
+                                # Expanded causal keywords with more nuanced terms
+                                causal_keywords = {
+                                    # Original keywords
+                                    "causes", "leads to", "improves", "boosts", "results in", "reduces", "enhances",
+                                    # Additional keywords
+                                    "triggers", "impacts", "drives", "mitigates", "correlates with", "affects",
+                                    "contributes to", "influences", "determines", "enables", "facilitates",
+                                    "prevents", "inhibits", "accelerates", "slows", "depends on", "relies on"
+                                }
+                                
+                                # Check for causal keywords in the text
+                                causal_term_matches = sum(1 for keyword in causal_keywords if keyword in text)
+                                
+                                # Apply a dynamic boost based on causal intent and keyword matches
+                                if causal_term_matches > 0:
+                                    # If query has causal intent, apply a stronger boost
+                                    if has_causal_intent:
+                                        # Apply a stronger boost (1.3x) for queries with explicit causal intent
+                                        score *= 1.3
+                                    else:
+                                        # Apply a milder boost (1.1x) for general queries
+                                        score *= 1.1
+                                        
+                                    # Additional boost for multiple causal terms (up to 1.2x for 3+ terms)
+                                    if causal_term_matches > 1:
+                                        score *= min(1.0 + (0.1 * causal_term_matches), 1.2)
+                                    
+                                    # Check for negation patterns that might indicate false causality
+                                    negation_patterns = ["not cause", "doesn't cause", "no evidence", "not related to", 
+                                                        "doesn't lead", "doesn't result", "doesn't improve"]
+                                    if any(pattern in text for pattern in negation_patterns):
+                                        # Reduce the boost for texts with negated causality
+                                        score *= 0.7
                         
                         # Add to candidates if score meets minimum threshold
                         if score >= min_similarity:
@@ -114,6 +150,43 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
         except Exception as e:
             logger.error(f"Error in retrieve context: {str(e)}\n{traceback.format_exc()}")
             return f"Error processing retrieve context: {str(e)}"
+
+    def detect_causal_intent(query):
+        """
+        Detect if a query has causal intent by looking for causal phrases and question patterns.
+        
+        Args:
+            query: The search query string
+            
+        Returns:
+            bool: True if the query appears to have causal intent, False otherwise
+        """
+        # Convert query to lowercase for case-insensitive matching
+        query_lower = query.lower()
+        
+        # Causal intent phrases
+        causal_phrases = [
+            "why", "how does", "what causes", "what leads to", "what results in",
+            "reason for", "effect of", "impact of", "influence of", "relationship between",
+            "connection between", "correlation between", "cause of", "caused by",
+            "leads to", "results in", "affects", "influences", "determines",
+            "how can", "how to improve", "how to increase", "how to reduce"
+        ]
+        
+        # Check for causal phrases in the query
+        for phrase in causal_phrases:
+            if phrase in query_lower:
+                return True
+        
+        # Check for question patterns that often indicate causal relationships
+        if query_lower.startswith(("why ", "how ", "what happens when ")):
+            return True
+            
+        # Check for "does X affect Y" pattern
+        if "affect" in query_lower or "effect" in query_lower or "impact" in query_lower:
+            return True
+            
+        return False
 
     def enhanced_graph_search(embeddings, query, limit=5):
         """
