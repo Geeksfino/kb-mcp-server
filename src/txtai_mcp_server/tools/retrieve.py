@@ -83,6 +83,11 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
             # Get more results initially for filtering
             results = app.search(query, limit=max(10, limit * 2), graph=True)
             
+            # Check if results is None
+            if results is None:
+                logger.error(f"Search returned None for query: {query}")
+                return json.dumps([{"text": "No results found. The embeddings index may be empty or not properly configured.", "score": 0.0}])
+            
             # For graph results, enhance using centrality and query relevance
             if hasattr(results, 'centrality') and callable(results.centrality):
                 # Get all nodes with their centrality scores
@@ -146,9 +151,15 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
             else:
                 # Fallback if centrality not available
                 graph_results = []
-                for x in list(results)[:limit]:
-                    if "text" in x:
-                        graph_results.append({"text": x["text"], "score": x.get("score", 0.5)})
+                try:
+                    # Try to iterate through results
+                    for x in list(results)[:limit]:
+                        if "text" in x:
+                            graph_results.append({"text": x["text"], "score": x.get("score", 0.5)})
+                except (TypeError, AttributeError) as e:
+                    # Handle case where results is not iterable
+                    logger.error(f"Error iterating through results: {e}")
+                    return json.dumps([{"text": "Error processing search results. The search index may not be properly configured.", "score": 0.0}])
             
             # Format results
             if graph_results:
@@ -166,5 +177,11 @@ def register_retrieve_tools(mcp: FastMCP) -> None:
                 
         except Exception as e:
             logger.error(f"Error in retrieve context: {str(e)}\n{traceback.format_exc()}")
-            return f"Error processing retrieve context: {str(e)}"
+            # Return a more informative error message in JSON format
+            error_message = str(e)
+            return json.dumps([{
+                "text": f"An error occurred while retrieving context: {error_message}. " +
+                        "Please check that the embeddings index is properly configured and not empty.",
+                "score": 0.0
+            }])
 

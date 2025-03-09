@@ -1,4 +1,4 @@
-"""TxtAI MCP server implementation."""
+"""TxtAI MCP Server with causal boost and multilingual support."""
 import sys
 import signal
 import asyncio
@@ -8,11 +8,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, Optional
 
 from mcp.server.fastmcp import FastMCP, Context
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions
-import mcp.server.stdio as mcp_stdio
-import mcp.server.sse as mcp_sse
-from txtai.app import Application
+from mcp.server.lowlevel.server import Server
 
 from txtai_mcp_server.core.config import TxtAISettings
 from txtai_mcp_server.core.context import TxtAIContext
@@ -22,6 +18,7 @@ from txtai_mcp_server.tools.search import register_search_tools
 from txtai_mcp_server.tools.qa import register_qa_tools
 from txtai_mcp_server.tools.retrieve import register_retrieve_tools
 
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -29,25 +26,25 @@ logging.basicConfig(
     stream=sys.stderr
 )
 
-# Enable logging for all packages
+# Enable MCP logging
 logging.getLogger('mcp').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.server').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.transport').setLevel(logging.DEBUG)
-logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)
-logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)
-logging.getLogger('txtai').setLevel(logging.DEBUG)
-logging.getLogger('txtai_mcp_server').setLevel(logging.DEBUG)
+logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)  # Add SSE logging
+logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)  # Add stdio transport logging
 logger = logging.getLogger(__name__)
 
+# Global configuration variables for causal boost
+_ENABLE_CAUSAL_BOOST = False
+_CAUSAL_CONFIG_PATH = None
+
 @asynccontextmanager
-async def txtai_lifespan(mcp: FastMCP, enable_causal_boost: bool = False, causal_config_path: Optional[str] = None) -> AsyncIterator[Dict[str, Any]]:
+async def server_lifespan(_: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Manage txtai application lifecycle.
     
-    Args:
-        mcp: FastMCP server instance
-        enable_causal_boost: Whether to enable causal boost feature
-        causal_config_path: Path to custom causal boost configuration file
+    Uses global variables _ENABLE_CAUSAL_BOOST and _CAUSAL_CONFIG_PATH for configuration.
     """
+    global _ENABLE_CAUSAL_BOOST, _CAUSAL_CONFIG_PATH
     logger.info("=== Starting txtai server (lifespan) ===")
     try:
         # Initialize application
@@ -72,11 +69,11 @@ async def txtai_lifespan(mcp: FastMCP, enable_causal_boost: bool = False, causal
         logger.info("Created txtai application")
         
         # Initialize causal boost configuration if enabled
-        if enable_causal_boost:
+        if _ENABLE_CAUSAL_BOOST:
             try:
-                if causal_config_path:
-                    logger.info(f"Loading custom causal boost configuration from {causal_config_path}")
-                    causal_config = CausalBoostConfig.load_from_file(causal_config_path)
+                if _CAUSAL_CONFIG_PATH:
+                    logger.info(f"Loading custom causal boost configuration from {_CAUSAL_CONFIG_PATH}")
+                    causal_config = CausalBoostConfig.load_from_file(_CAUSAL_CONFIG_PATH)
                 else:
                     logger.info("Using default causal boost configuration")
                     causal_config = DEFAULT_CAUSAL_CONFIG
@@ -95,74 +92,70 @@ async def txtai_lifespan(mcp: FastMCP, enable_causal_boost: bool = False, causal
     finally:
         logger.info("=== Shutting down txtai server (lifespan) ===")
 
-# Create a server object at the module level for the MCP CLI to use
-server = FastMCP("TxtAI Server", lifespan=txtai_lifespan)
-
-# Register tools with the server
-register_search_tools(server)
-register_qa_tools(server)
-register_retrieve_tools(server)
-logger.info("Registered search, QA, and retrieve tools with module-level server")
-
-async def run_server(transport: str = 'sse', host: str = 'localhost', port: int = 8000,
-               enable_causal_boost: bool = False, causal_config_path: Optional[str] = None):
-    """Run the TxtAI MCP server with the specified transport.
+def create_server(
+    host: str = "localhost",
+    port: int = 8000,
+    enable_causal_boost: bool = False,
+    causal_config_path: Optional[str] = None
+) -> FastMCP:
+    """Create and configure the MCP server instance.
     
     Args:
-        transport: The transport to use. Either 'sse' or 'stdio'.
-        host: Host to bind to when using SSE transport (default: localhost).
-        port: Port to bind to when using SSE transport (default: 8000).
+        host: Host to bind to when using SSE transport
+        port: Port to bind to when using SSE transport
+        enable_causal_boost: Whether to enable causal boost feature
+        causal_config_path: Path to custom causal boost configuration YAML file
+    
+    Returns:
+        Configured FastMCP server instance
     """
-    # Create the server with lifespan
-    logger.info("Creating FastMCP instance...")
-    mcp = FastMCP(
-        "TxtAI Server",
-        lifespan=lambda mcp: txtai_lifespan(mcp, enable_causal_boost, causal_config_path),
+    global _ENABLE_CAUSAL_BOOST, _CAUSAL_CONFIG_PATH
+    
+    # Configure causal boost
+    _ENABLE_CAUSAL_BOOST = enable_causal_boost
+    _CAUSAL_CONFIG_PATH = causal_config_path
+    
+    # Create server with configuration
+    server = FastMCP(
+        "Knowledgebase Server",
+        lifespan=server_lifespan,
         host=host,
         port=port
     )
-    logger.info("Created FastMCP instance")
-
-    # Register tools
-    register_search_tools(mcp)
-    register_qa_tools(mcp)
-    register_retrieve_tools(mcp)
-    logger.info("Registered search, QA, and retrieve tools with module-level server")
-
-    # Handle shutdown gracefully
-    def handle_shutdown(signum, frame):
-        """Handle shutdown signals."""
-        logger.info(f"Received signal {signum}, shutting down...")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
-
-    logger.info(f"=== TxtAI server ready with {transport} transport ===")
-    if transport == 'sse':
-        logger.info(f"Server will be available at http://{host}:{port}/sse")
-
-    # Use the high-level run method which handles the transport internally
-    if transport == 'sse':
-        # We need to use run_sse_async directly since we're already in an async context
-        await mcp.run_sse_async()
-    else:
-        # We need to use run_stdio_async directly since we're already in an async context
-        await mcp.run_stdio_async()
-
-if __name__ == "__main__":
-    import argparse
-    import os
     
-    # Parse command line arguments
+    # Register tools
+    register_search_tools(server)
+    register_qa_tools(server)
+    register_retrieve_tools(server)
+    logger.info("Created and configured Knowledgebase instance")
+    
+    return server
+
+# Create module-level server instance only if not running as main
+if __name__ != "__main__":
+    mcp = create_server()
+
+# Handle shutdown gracefully
+def handle_shutdown(signum, frame):
+    """Handle shutdown signals."""
+    logger.info(f"Received signal {signum}, shutting down...")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, handle_shutdown)
+signal.signal(signal.SIGTERM, handle_shutdown)
+
+def run():
+    import argparse
+    
     parser = argparse.ArgumentParser(description='TxtAI MCP Server')
-    parser.add_argument('--embeddings', type=str, help='Path to embeddings directory or archive file')
-    parser.add_argument('--transport', type=str, default='stdio', choices=['sse', 'stdio'], 
-                        help='Transport to use for MCP server (default: stdio)')
-    parser.add_argument('--host', type=str, default='0.0.0.0',
+    parser.add_argument('--transport', type=str, default='stdio', choices=['sse', 'stdio'],
+                        help='Transport to use (default: stdio)')
+    parser.add_argument('--host', type=str, default='localhost',
                         help='Host to bind to when using SSE transport (default: localhost)')
     parser.add_argument('--port', type=int, default=8000,
                         help='Port to bind to when using SSE transport (default: 8000)')
+    parser.add_argument('--embeddings', type=str,
+                        help='Path to embeddings index')
     
     # Add causal boost arguments
     causal_group = parser.add_argument_group('Causal Boost Configuration')
@@ -177,17 +170,32 @@ if __name__ == "__main__":
     if args.embeddings:
         os.environ["TXTAI_EMBEDDINGS"] = args.embeddings
     
-    # Run the server with the specified transport and causal boost settings
-    asyncio.run(run_server(
-        transport=args.transport,
-        host=args.host,
-        port=args.port,
-        enable_causal_boost=args.enable_causal_boost,
-        causal_config_path=args.causal_config
-    ))
+    # Configure the server based on arguments
+    if args.transport == 'sse':
+        os.environ["MCP_SSE_HOST"] = args.host
+        os.environ["MCP_SSE_PORT"] = str(args.port)
+        logger.info(f"Server will be available at http://{args.host}:{args.port}/sse")
+    
+        # Create server instance with arguments
+        server = create_server(
+            host=args.host,
+            port=args.port,
+            enable_causal_boost=args.enable_causal_boost,
+            causal_config_path=args.causal_config
+        )
+        
+        # Let FastMCP handle transport automatically
+        # This ensures consistent behavior for causal boost features
+        # across direct execution and MCP environments
+        server.run(transport=args.transport)
+    else:
+        # For stdio transport, use default FastMCP run
+        logger.info("Server will be available at stdin/stdout")
+        server = create_server(
+            enable_causal_boost=args.enable_causal_boost,
+            causal_config_path=args.causal_config
+        )
+        server.run()
 
-# This function is called by the MCP CLI
-def run():
-    """Entry point for the MCP CLI."""
-    # The MCP CLI will set the transport, so we don't need to specify it here
-    asyncio.run(run_server())
+if __name__ == "__main__":
+    run()

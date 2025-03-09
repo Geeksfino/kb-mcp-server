@@ -1,20 +1,23 @@
-"""TxtAI MCP server implementation."""
+"""Simple echo server for testing MCP."""
 import sys
 import signal
 import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Any
+from typing import AsyncIterator, Dict, Any, Optional
 
 from mcp.server.fastmcp import FastMCP, Context
-from txtai.app import Application
+from mcp.server.lowlevel.server import Server
 
 from txtai_mcp_server.core.config import TxtAISettings
 from txtai_mcp_server.core.context import TxtAIContext
-from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app
+from txtai_mcp_server.core.state import set_txtai_app, get_txtai_app, set_causal_config
+from txtai_mcp_server.tools.causal_config import CausalBoostConfig, DEFAULT_CAUSAL_CONFIG
 from txtai_mcp_server.tools.search import register_search_tools
 from txtai_mcp_server.tools.qa import register_qa_tools
+from txtai_mcp_server.tools.retrieve import register_retrieve_tools
+
 
 # Configure logging
 logging.basicConfig(
@@ -23,19 +26,23 @@ logging.basicConfig(
     stream=sys.stderr
 )
 
-# Enable logging for all packages
+# Enable MCP logging
 logging.getLogger('mcp').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.server').setLevel(logging.DEBUG)
 logging.getLogger('mcp.server.lowlevel.transport').setLevel(logging.DEBUG)
-logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)
-logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)
-logging.getLogger('txtai').setLevel(logging.DEBUG)
-logging.getLogger('txtai_mcp_server').setLevel(logging.DEBUG)
+logging.getLogger('mcp.server.sse').setLevel(logging.DEBUG)  # Add SSE logging
+logging.getLogger('mcp.server.stdio').setLevel(logging.DEBUG)  # Add stdio transport logging
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
-    """Manage txtai application lifecycle."""
+async def server_lifespan(_: FastMCP, enable_causal_boost: bool = False, causal_config_path: Optional[str] = None) -> AsyncIterator[Dict[str, Any]]:
+    """Manage txtai application lifecycle.
+    
+    Args:
+        mcp: FastMCP server instance
+        enable_causal_boost: Whether to enable causal boost feature
+        causal_config_path: Path to custom causal boost configuration file
+    """
     logger.info("=== Starting txtai server (lifespan) ===")
     try:
         # Initialize application
@@ -50,15 +57,29 @@ async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
             settings = TxtAISettings.load()
             logger.debug(f"Loaded TxtAI settings: {settings.dict()}")
             app = settings.create_application()
-        
-        logger.debug("Created txtai application with configuration:")
-        logger.debug(f"- Model path: {app.config.get('path')}")
-        logger.debug(f"- Content storage: {app.config.get('content')}")
-        logger.debug(f"- Embeddings config: {app.config.get('embeddings')}")
-        logger.debug(f"- Extractor config: {app.config.get('extractor')}")
+            logger.debug(f"Created txtai application with configuration:")
+            logger.debug(f"- Model path: {app.config.get('path')}")
+            logger.debug(f"- Content storage: {app.config.get('content')}")
+            logger.debug(f"- Embeddings config: {app.config.get('embeddings')}")
+            logger.debug(f"- Extractor config: {app.config.get('extractor')}")
         
         set_txtai_app(app)
         logger.info("Created txtai application")
+        
+        # Initialize causal boost configuration if enabled
+        if enable_causal_boost:
+            try:
+                if causal_config_path:
+                    logger.info(f"Loading custom causal boost configuration from {causal_config_path}")
+                    causal_config = CausalBoostConfig.load_from_file(causal_config_path)
+                else:
+                    logger.info("Using default causal boost configuration")
+                    causal_config = DEFAULT_CAUSAL_CONFIG
+                set_causal_config(causal_config)
+                logger.info("Initialized causal boost configuration")
+            except Exception as e:
+                logger.error(f"Failed to initialize causal boost configuration: {e}")
+                raise
         
         # Yield serializable context
         yield {"status": "ready"}
@@ -69,18 +90,19 @@ async def txtai_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     finally:
         logger.info("=== Shutting down txtai server (lifespan) ===")
 
-# Create the server with lifespan
-logger.info("Creating FastMCP instance...")
-mcp = FastMCP(
-    "TxtAI Server",
-    lifespan=txtai_lifespan
-)
-logger.info("Created FastMCP instance")
 
-# Register tools
+# Create the server
+logger.info("Creating Knowledgebase instance...")
+mcp = FastMCP(
+    "Knowledgebase Server",
+    lifespan=server_lifespan
+)
+logger.info("Created Knowledgebase instance")
+# Register tools with the server
 register_search_tools(mcp)
 register_qa_tools(mcp)
-logger.info("Registered search and QA tools")
+register_retrieve_tools(mcp)
+logger.info("Registered search, QA, and retrieve tools with module-level server")
 
 # Handle shutdown gracefully
 def handle_shutdown(signum, frame):
