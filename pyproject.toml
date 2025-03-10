@@ -1,12 +1,12 @@
 [project]
-name = "txtai-mcp-server"
+name = "kb-mcp-server"
 version = "0.1.0"
 description = "A Model Context Protocol (MCP) server implementation for txtai"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "Codeium", email = "support@codeium.com" }
+    { name = "geeksfino", email = "geeksfino@gmail.com" }
 ]
 dependencies = [
     "mcp[cli]", # Core MCP functionality
