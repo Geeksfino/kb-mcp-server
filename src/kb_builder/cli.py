@@ -134,6 +134,9 @@ def build_command(args):
     
     Args:
         args: Command-line arguments
+        
+    The build command processes input documents and builds a searchable index.
+    It can also export the built index to a compressed tar.gz file for portability.
     """
     # Check if required arguments are provided
     if not ((hasattr(args, 'input') and args.input) or 
@@ -141,13 +144,14 @@ def build_command(args):
         logger.error("Error: No input sources provided.")
         logger.error("Please provide at least one input source using --input or --json_input")
         print("\nBuild command usage:")
-        print("  python -m data_tools.cli build --input PATH [PATH ...] [--config CONFIG]")
-        print("  python -m data_tools.cli build --json_input JSON_FILE [--config CONFIG]")
+        print("  python -m data_tools.cli build --input PATH [PATH ...] [--config CONFIG] [--export EXPORT_PATH]")
+        print("  python -m data_tools.cli build --json_input JSON_FILE [--config CONFIG] [--export EXPORT_PATH]")
         print("\nOptions:")
         print("  --input PATH       Path to input files or directories")
         print("  --json_input PATH  Path to JSON file containing a list of documents")
         print("  --extensions EXT   Comma-separated list of file extensions to include")
         print("  --config PATH      Path to configuration file")
+        print("  --export PATH      Export the built index to a compressed tar.gz file")
         return
         
     # Use config from args or try to find a default config
@@ -296,6 +300,24 @@ def build_command(args):
         # Log if graph was built
         if hasattr(app.embeddings, 'graph') and app.embeddings.graph:
             logger.info("Knowledge graph was automatically built based on YAML configuration")
+            
+        # Export the index to a tar.gz file if requested
+        if hasattr(args, 'export') and args.export:
+            export_path = args.export
+            # Add .tar.gz extension if not present
+            if not export_path.endswith('.tar.gz'):
+                export_path = f"{export_path}.tar.gz"
+                
+            logger.info(f"Exporting index to {export_path}")
+            try:
+                # Save the embeddings to a tar.gz file
+                app.embeddings.save(export_path)
+                logger.info(f"Index successfully exported to {export_path}")
+                
+                # Show how to load this index
+                logger.info(f"To load this index, use: app = Application(\"path: {export_path}\")")
+            except Exception as e:
+                logger.error(f"Error exporting index to {export_path}: {e}")
     except Exception as e:
         logger.error(f"Error indexing documents: {e}")
         return
@@ -768,6 +790,7 @@ def main():
     build_parser.add_argument("--extensions", type=str, help="Comma-separated list of file extensions to include")
     build_parser.add_argument("--json_input", type=str, help="Path to JSON file containing a list of documents")
     build_parser.add_argument("--config", type=str, help="Path to configuration file")
+    build_parser.add_argument("--export", type=str, help="Export the built index to a compressed tar.gz file")
     build_parser.set_defaults(func=build_command)
     
     # Retrieve command

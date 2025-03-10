@@ -1,32 +1,43 @@
-# Use a prebuilt image that includes llama-cpp-python
-FROM ghcr.io/allenporter/llama-cpp-server-cpu:v2.21.1
+# Use a Python image with uv pre-installed
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim
 
-# Set working directory
+# Install the project into `/app`
 WORKDIR /app
 
-# Install additional system dependencies if needed
-RUN apt-get update && \
-    apt-get -y --no-install-recommends install \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
 
-# Install txtai with all components
-RUN python -m pip install --no-cache-dir "txtai[all,pipeline,graph]>=8.3.1" && \
-    python -c "import sys, importlib.util as util; 1 if util.find_spec('nltk') else sys.exit(); import nltk; nltk.download(['punkt', 'punkt_tab', 'averaged_perceptron_tagger_eng'])"
+# Copy from the cache instead of linking since it's a mounted volume
+ENV UV_LINK_MODE=copy
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy project files
 COPY . /app/
 
-# Install MCP and other required dependencies
-RUN pip install --no-cache-dir "mcp[cli]" trio httpx>=0.28.1 pydantic-settings>=2.0 \
+# Install txtai and other dependencies
+RUN uv pip install txtai[all,pipeline,graph]>=8.3.1 \
+    trio httpx>=0.28.1 pydantic-settings>=2.0 \
+    networkx>=2.8.0 matplotlib>=3.5.0 PyPDF2>=2.0.0 \
+    python-docx>=0.8.11 python-louvain>=0.16.0 \
+    fast-langdetect>=1.0.3 datasets torch>=2.0.0 \
     transformers>=4.30.0 sentence-transformers>=2.2.0 \
-    datasets networkx>=2.8.0 matplotlib>=3.5.0 PyPDF2>=2.0.0 python-docx>=0.8.11 \
-    beautifulsoup4>=4.10.0 pandas>=1.3.0 python-louvain>=0.16.0 markdown>=3.3.0
+    bitsandbytes==0.42.0 beautifulsoup4>=4.10.0 \
+    pandas>=1.3.0 markdown>=3.3.0
 
-# Now install the project in development mode
-RUN pip install --no-cache-dir -e .
+# Install MCP as a normal Python package
+RUN uv pip install mcp==1.3.0
 
-# Make entrypoint script executable
+# Install the project
+RUN uv pip install -e .
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Make scripts executable
 RUN chmod +x /app/docker-entrypoint.sh
 RUN chmod +x /app/download_models.py
 
