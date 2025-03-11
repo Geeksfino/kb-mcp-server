@@ -515,5 +515,7 @@ def main():
     else:
         parser.print_help()
 
+# Entry point functions have been moved to dedicated scripts in the bin directory
+
 if __name__ == "__main__":
     main()

@@ -41,7 +41,18 @@ The MCP server provides a standardized interface to access the knowledge base:
 
 ## Installation
 
-### Using Conda (Recommended)
+### Using conda
+
+```bash
+# Create a new conda environment (optional)
+conda create -n embedding-mcp python=3.10
+conda activate embedding-mcp
+
+# Install from PyPI
+pip install kb-mcp-server
+```
+
+### From Source
 
 ```bash
 # Create a new conda environment
@@ -66,7 +77,10 @@ pip install uv
 uv venv
 source .venv/bin/activate
 
-# Install dependencies
+# Option 1: Install from PyPI
+uv pip install kb-mcp-server
+
+# Option 2: Install from source (for development)
 uv pip install -e .
 ```
 
@@ -74,7 +88,26 @@ uv pip install -e .
 
 ### Building a Knowledge Base
 
-You can use either the Python module directly or the convenient shell scripts:
+You can use the command-line tools installed from PyPI, the Python module directly, or the convenient shell scripts:
+
+#### Using the PyPI Installed Commands
+
+```bash
+# Build a knowledge base from documents
+kb-build --input /path/to/documents --config config.yml
+
+# Update an existing knowledge base with new documents
+kb-build --input /path/to/new_documents --update
+
+# Export a knowledge base for portability
+kb-build --input /path/to/documents --export my_knowledge_base.tar.gz
+
+# Search a knowledge base
+kb-search /path/to/knowledge_base "What is machine learning?"
+
+# Search with graph enhancement
+kb-search /path/to/knowledge_base "What is machine learning?" --graph --limit 10
+```
 
 #### Using the Python Module
 
@@ -114,6 +147,18 @@ Run `./scripts/kb_build.sh --help` or `./scripts/kb_search.sh --help` for more o
 
 ### Starting the MCP Server
 
+#### Using the PyPI Installed Command
+
+```bash
+# Start with a specific knowledge base folder
+kb-mcp-server --embeddings /path/to/knowledge_base_folder
+
+# Start with a given knowledge base archive
+kb-mcp-server --embeddings /path/to/knowledge_base.tar.gz
+```
+
+#### Using the Python Module
+
 ```bash
 # Start with a specific knowledge base folder
 python -m txtai_mcp_server --embeddings /path/to/knowledge_base_folder
@@ -129,6 +174,9 @@ Here's how to configure the MCP server:
 
 ```bash
 # Start the server with command-line arguments
+kb-mcp-server --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
+
+# Or using the Python module
 python -m txtai_mcp_server --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
 
 # Or use environment variables

@@ -15,3 +15,4 @@ test/cache/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+dist
