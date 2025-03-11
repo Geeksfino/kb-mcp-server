@@ -1,11 +1,14 @@
 {
   "mcpServers": {
     "kb-server": {
-      "command": "/Users/cliang/repos/mygithub/embedding-mcp-server/.venv/bin/python",
+      "command": "uvx",
       "args": [
-        "/Users/cliang/repos/mygithub/embedding-mcp-server/main.py"
+        "kb-mcp-server@0.2.6",
+        "--embeddings", "/path/to/knowledge_base",
+        "--host", "localhost",
+        "--port", "8000"
       ],
-      "cwd": "/Users/cliang/repos/mygithub/embedding-mcp-server"
+      "cwd": "/path/to/working/directory"
     }
   }
 }
