@@ -1,576 +1,254 @@
-# TxtAI MCP Server
+# Embedding MCP Server
 
-A Model Context Protocol (MCP) server implementation for txtai, providing semantic search, text processing, and AI capabilities through a standardized interface.
+A Model Context Protocol (MCP) server implementation powered by txtai, providing semantic search, knowledge graph capabilities, and AI-driven text processing through a standardized interface.
 
-## Features
+## The Power of txtai: All-in-one Embeddings Database
 
-- **Semantic Search**: Search through documents and text using semantic understanding
-- **Text Processing**: Summarization, translation, and text extraction
-- **Model Management**: Access to various AI models and pipelines
-- **MCP Compliance**: Full implementation of the Model Context Protocol
+This project leverages [txtai](https://github.com/neuml/txtai), an all-in-one embeddings database for RAG leveraging semantic search, knowledge graph construction, and language model workflows. txtai offers several key advantages:
+
+- **Unified Vector Database**: Combines vector indexes, graph networks, and relational databases in a single platform
+- **Semantic Search**: Find information based on meaning, not just keywords
+- **Knowledge Graph Integration**: Automatically build and query knowledge graphs from your data
+- **Portable Knowledge Bases**: Save entire knowledge bases as compressed archives (.tar.gz) that can be easily shared and loaded
+- **Extensible Pipeline System**: Process text, documents, audio, images, and video through a unified API
+- **Local-first Architecture**: Run everything locally without sending data to external services
+
+## How It Works
+
+The project contains a knowledge base builder tool and a MCP server. The knowledge base builder tool is a command-line interface for creating and managing knowledge bases. The MCP server provides a standardized interface to access the knowledge base. 
+
+It is not required to use the knowledge base builder tool to build a knowledge base. You can always build a knowledge base using txtai's programming interface by writing a Python script or even using a jupyter notebook. As long as the knowledge base is built using txtai, it can be loaded by the MCP server. Better yet, the knowledge base can be a folder on the file system or an exported .tar.gz file. Just give it to the MCP server and it will load it.
+
+### 1. Build a Knowledge Base with kb_builder
+
+The `kb_builder` module provides a command-line interface for creating and managing knowledge bases:
+
+- Process documents from various sources (files, directories, JSON)
+- Extract text and create embeddings
+- Build knowledge graphs automatically
+- Export portable knowledge bases
+
+Note it is possibly limited in functionality and currently only provided for convenience.
+
+### 2. Start the MCP Server
+
+The MCP server provides a standardized interface to access the knowledge base:
+
+- Semantic search capabilities
+- Knowledge graph querying and visualization
+- Text processing pipelines (summarization, extraction, etc.)
+- Full compliance with the Model Context Protocol
 
 ## Installation
 
-### For Users
+### Using Conda (Recommended)
 
 ```bash
-pip install txtai-mcp-server
+# Create a new conda environment
+conda create -n embedding-mcp python=3.10
+conda activate embedding-mcp
+
+# Clone the repository
+git clone https://github.com/Geeksfino/kb-mcp-server.git.git
+cd kb-mcp-server
+
+# Install dependencies
+pip install -e .
 ```
 
-### For Developers
-
-1. Clone the repository:
-```bash
-git clone https://github.com/codeium/txtai-mcp-server.git
-cd txtai-mcp-server
-```
-
-2. Set up development environment:
-```bash
-./scripts/dev-setup.sh
-```
-
-This will:
-- Install the package in editable mode with development dependencies
-- Set up pre-commit hooks
-- Configure the development environment
-
-## Development
-
-### Project Structure
-
-```
-txtai-mcp-server/
-├── src/                    # Source code
-│   └── txtai_mcp_server/
-│       ├── core/          # Core server implementation
-│       ├── tools/         # MCP tools implementation
-│       ├── resources/     # MCP resources implementation
-│       └── prompts/       # MCP prompts implementation
-├── tests/                 # Test suite
-├── scripts/               # Development scripts
-└── pyproject.toml        # Project configuration
-```
-
-### Development Scripts
-
-- `./scripts/lint.sh`: Run code formatting and type checking
-  - Runs isort for import sorting
-  - Runs black for code formatting
-  - Runs mypy for type checking
-
-- `./scripts/test.sh`: Run tests with coverage
-  - Runs pytest with coverage reporting
-  - Generates HTML coverage report
-  - Pass additional pytest arguments: `./scripts/test.sh -k test_name`
-
-- `./scripts/build.sh`: Build package distribution
-  - Cleans previous builds
-  - Creates new distribution files
-
-### Running Tests
+### Using uv (Faster Alternative)
 
 ```bash
-# Run all tests
-./scripts/test.sh
+# Install uv if not already installed
+pip install uv
 
-# Run specific test
-./scripts/test.sh -k test_name
+# Create a new virtual environment
+uv venv
+source .venv/bin/activate
 
-# Run tests with verbose output
-./scripts/test.sh -v
+# Install dependencies
+uv pip install -e .
 ```
 
-### Code Quality
+## Command Line Usage
 
-We use several tools to maintain code quality:
+### Building a Knowledge Base
 
-- **black**: Code formatting
-- **isort**: Import sorting
-- **mypy**: Type checking
-- **pytest**: Testing framework
-- **pre-commit**: Git hooks for code quality
+You can use either the Python module directly or the convenient shell scripts:
 
-Run all quality checks:
-```bash
-./scripts/lint.sh
-```
-
-## Configuration
-
-The server supports two configuration methods:
-
-### 1. YAML Configuration (Recommended)
-Use txtai's native YAML configuration format for full access to all features:
-
-1. Copy the example config:
-```bash
-cp config.example.yml config.yml
-```
-
-2. Edit `config.yml` to your needs and set:
-```bash
-export TXTAI_YAML_CONFIG=config.yml
-```
-
-See `config.example.yml` for a comprehensive example with all available options. For detailed documentation, see:
-- [txtai Configuration Guide](https://neuml.github.io/txtai/api/configuration)
-- [Embeddings Configuration](https://neuml.github.io/txtai/embeddings/configuration)
-- [Pipeline Configuration](https://neuml.github.io/txtai/pipeline)
-- [Workflow Configuration](https://neuml.github.io/txtai/workflow)
-
-### 2. Environment Variables (Fallback)
-For basic usage, configure through environment variables:
+#### Using the Python Module
 
 ```bash
-# Basic settings
-export TXTAI_MODEL_PATH=sentence-transformers/all-MiniLM-L6-v2
-export TXTAI_STORAGE_MODE=memory  # or persistence
-export TXTAI_INDEX_PATH=~/.txtai/embeddings
+# Build a knowledge base from documents
+python -m kb_builder build --input /path/to/documents --config config.yml
+
+# Update an existing knowledge base with new documents
+python -m kb_builder build --input /path/to/new_documents --update
+
+# Export a knowledge base for portability
+python -m kb_builder build --input /path/to/documents --export my_knowledge_base.tar.gz
 ```
 
-Or use a `.env` file (see `.env.example`).
+#### Using the Convenience Scripts
 
-### Configuration Priority
-
-1. **YAML Configuration** (if `TXTAI_YAML_CONFIG` is set)
-   - Full access to all txtai features
-   - Native configuration format
-   - Recommended for production use
-
-2. **Environment Variables** (if no YAML config)
-   - Basic configuration through `TXTAI_` prefixed variables
-   - Limited to core settings
-   - Good for development and testing
-
-3. **Default Values** (if neither above is set)
-   - Model: sentence-transformers/all-MiniLM-L6-v2
-   - Storage: memory
-   - Index: ~/.txtai/embeddings
-
-### Examples
-
-See `config.example.yml` for examples of:
-1. Basic memory storage
-2. Persistent storage with GPU
-3. Full pipeline setup with QA
-4. Workflow configuration
-5. Cloud storage options
-
-## Docker
-
-### Running with Docker
-
-The MCP server can be easily run using Docker. We use the official txtai image as a base:
+The repository includes convenient wrapper scripts that make it easier to build and search knowledge bases:
 
 ```bash
-# Build the Docker image (CPU version)
-docker build -t txtai-mcp-server .
+# Build a knowledge base using a template configuration
+./scripts/kb_build.sh /path/to/documents technical_docs
 
-# Build with GPU support (requires modifying the FROM line in Dockerfile)
-# FROM neuml/txtai-gpu:latest
-docker build -t txtai-mcp-server-gpu .
+# Build using a custom configuration file
+./scripts/kb_build.sh /path/to/documents /path/to/my_config.yml
 
-# Build with pre-cached Hugging Face models
-docker build \
-  --build-arg HF_TRANSFORMERS_MODELS="bert-base-uncased,distilbert-base-uncased" \
-  --build-arg HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
-  -t txtai-mcp-server-with-models .
+# Update an existing knowledge base
+./scripts/kb_build.sh /path/to/documents technical_docs --update
 
-# Build with pre-cached models using the host's Hugging Face cache
-# This will avoid downloading models that are already cached on the host
-docker build \
-  --build-arg HF_TRANSFORMERS_MODELS="bert-base-uncased,distilbert-base-uncased" \
-  --build-arg HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
-  --build-arg HF_CACHE_DIR="$HOME/.cache/huggingface/hub" \
-  -t txtai-mcp-server-with-models .
+# Search a knowledge base
+./scripts/kb_search.sh /path/to/knowledge_base "What is machine learning?"
 
-# Run the container with default settings
-docker run -p 8000:8000 txtai-mcp-server
-
-# Run with custom port
-docker run -p 9000:9000 -e PORT=9000 txtai-mcp-server
-
-# Run with custom embeddings directory
-docker run -p 8000:8000 -v /path/to/embeddings:/data/embeddings -e EMBEDDINGS_PATH=/data/embeddings txtai-mcp-server
-
-# Run with embeddings tar.gz file
-docker run -p 8000:8000 -v /path/to/embeddings.tar.gz:/data/embeddings.tar.gz -e EMBEDDINGS_PATH=/data/embeddings.tar.gz txtai-mcp-server
+# Search with graph enhancement
+./scripts/kb_search.sh /path/to/knowledge_base "What is machine learning?" --graph
 ```
 
-### Using Docker Compose
+Run `./scripts/kb_build.sh --help` or `./scripts/kb_search.sh --help` for more options.
 
-For a more convenient setup, use Docker Compose:
-
-1. Create a `.env` file with your configuration (see `.env.example`)
-2. Run the service:
+### Starting the MCP Server
 
 ```bash
-# Start with default settings
-docker-compose up
+# Start with a specific knowledge base folder
+python -m txtai_mcp_server --embeddings /path/to/knowledge_base_folder
 
-# Start with custom settings from .env file
-docker-compose up
+# Start with a given knowledge base archive
+python -m txtai_mcp_server --embeddings /path/to/knowledge_base.tar.gz
+```
+## MCP Server Configuration
 
-# Start with custom settings from command line
-PORT=9000 EMBEDDINGS_PATH=/data/custom-embeddings docker-compose up
+The MCP server is configured using environment variables or command-line arguments, not YAML files. YAML files are only used for configuring txtai components during knowledge base building.
 
-# Start with custom config file
-LOCAL_CONFIG_PATH=./my_config.yml CONFIG_FILE=my_config.yml docker-compose up
+Here's how to configure the MCP server:
 
-# Start with pre-cached Hugging Face models
-HF_TRANSFORMERS_MODELS="bert-base-uncased,roberta-base" \
-HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
-docker-compose up --build
+```bash
+# Start the server with command-line arguments
+python -m txtai_mcp_server --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
 
-# Start with pre-cached models using the host's Hugging Face cache
-HF_TRANSFORMERS_MODELS="bert-base-uncased,roberta-base" \
-HF_SENTENCE_TRANSFORMERS_MODELS="sentence-transformers/all-MiniLM-L6-v2" \
-HF_CACHE_DIR="$HOME/.cache/huggingface/hub" \
-docker-compose up --build
+# Or use environment variables
+export TXTAI_EMBEDDINGS=/path/to/knowledge_base
+export MCP_SSE_HOST=0.0.0.0
+export MCP_SSE_PORT=8000
+python -m txtai_mcp_server
 ```
 
-## Knowledge Management Tools
+Common configuration options:
+- `--embeddings`: Path to the knowledge base (required)
+- `--host`: Host address to bind to (default: localhost)
+- `--port`: Port to listen on (default: 8000)
+- `--transport`: Transport to use, either 'sse' or 'stdio' (default: stdio)
+- `--enable-causal-boost`: Enable causal boost feature for enhanced relevance scoring
+- `--causal-config`: Path to custom causal boost configuration YAML file
 
-This project includes powerful data ingestion and knowledge graph tools for building AI applications with rich contextual understanding.
+## Advanced Knowledge Base Configuration
 
-### Configuration
+Building a knowledge base with txtai requires a YAML configuration file that controls various aspects of the embedding process. This configuration is used by the `kb_builder` tool, not the MCP server itself.
 
-The data tools use txtai's Application and YAML configuration system. Create a `config.yaml` file:
+One may need to tune segmentation/chunking strategies, embedding models, and scoring methods, as well as configure graph construction, causal boosting, weights of hybrid search, and more.
+
+Fortunately, txtai provides a powerful YAML configuration system that requires no coding. Here's an example of a comprehensive configuration for knowledge base building:
 
 ```yaml
-# Basic configuration
+# Path to save/load embeddings index
+path: ~/.txtai/embeddings
+writable: true
+
+# Content storage in SQLite
+content:
+  path: sqlite:///~/.txtai/content.db
+
+# Embeddings configuration
 embeddings:
-  path: ~/.txtai/embeddings
-  content: true
-  contentlength: 32768
-  method: transformers
-  transforms:
-    - lowercase
-    - strip
-  score: bm25
-  batch: 5000
+  # Model settings
+  path: sentence-transformers/nli-mpnet-base-v2
+  backend: faiss
+  gpu: true
+  batch: 32
+  normalize: true
   
-# Vector embedding model  
+  # Scoring settings
+  scoring: hybrid
+  hybridalpha: 0.75
+
+# Pipeline configuration
 pipeline:
-  embedding:
-    path: sentence-transformers/all-MiniLM-L6-v2
+  workers: 2
+  queue: 100
+  timeout: 300
 
-# Document ingestion
-document:
-  reader:
-    path: txtai.reader.PDFReader
-  splitter:
-    path: txtai.splitter.Splitter
-    params:
-      chunking:
-        size: 512
-        overlap: 64
+# Question-answering pipeline
+extractor:
+  path: distilbert-base-cased-distilled-squad
+  maxlength: 512
+  minscore: 0.3
 
-# Knowledge graph settings      
+# Graph configuration
 graph:
-  similarity: 0.75
-  limit: 10
-
-# Optional NLP pipelines
-pipelines:
-  ner:
-    path: txtai.pipeline.HFEntity
-    params:
-      model: dslim/bert-base-NER
+  backend: sqlite
+  path: ~/.txtai/graph.db
+  similarity: 0.75  # Threshold for creating graph connections
+  limit: 10  # Maximum connections per node
 ```
 
-### Document Ingestion
+### Configuration Examples
 
-Ingest documents into the knowledge base:
+The `src/kb_builder/configs` directory contains configuration templates for different use cases and storage backends:
+
+#### Storage and Backend Configurations
+- `memory.yml`: In-memory vectors (fastest for development, no persistence)
+- `sqlite-faiss.yml`: SQLite for content + FAISS for vectors (local file-based persistence)
+- `postgres-pgvector.yml`: PostgreSQL + pgvector (production-ready with full persistence)
+
+#### Domain-Specific Configurations
+- `base.yml`: Base configuration template
+- `code_repositories.yml`: Optimized for code repositories
+- `data_science.yml`: Configured for data science documents
+- `general_knowledge.yml`: General purpose knowledge base
+- `research_papers.yml`: Optimized for academic papers
+- `technical_docs.yml`: Configured for technical documentation
+
+You can use these as starting points for your own configurations:
 
 ```bash
-# Process a directory of documents (recursive)
-python -m src.data_tools.cli --config config.yaml ingest directory /path/to/documents --recursive
+python -m kb_builder build --input /path/to/documents --config src/kb_builder/configs/technical_docs.yml
 
-# Process a single file
-python -m src.data_tools.cli --config config.yaml ingest file /path/to/document.pdf
-
-# Process a HuggingFace dataset
-python -m src.data_tools.cli --config config.yaml ingest dataset "dataset_name" --split train --text-field text
+# Or use a storage-specific configuration
+python -m kb_builder build --input /path/to/documents --config src/kb_builder/configs/postgres-pgvector.yml
 ```
 
-### Knowledge Graph
+## Advanced Features
 
-Build a knowledge graph from the ingested documents:
+### Knowledge Graph Capabilities
 
-```bash
-# Build a semantic knowledge graph
-python -m src.data_tools.cli --config config.yaml graph --visualize
+The MCP server leverages txtai's built-in graph functionality to provide powerful knowledge graph capabilities:
 
-# Detect communities in the knowledge graph
-python -m src.data_tools.cli --config config.yaml graph --detect-communities --visualize
+- **Automatic Graph Construction**: Build knowledge graphs from your documents automatically
+- **Graph Traversal**: Navigate through related concepts and documents
+- **Path Finding**: Discover connections between different pieces of information
+- **Community Detection**: Identify clusters of related information
 
-# Customize graph parameters
-python -m src.data_tools.cli --config config.yaml graph --min-similarity 0.8 --max-connections 15
-```
+### Causal Boosting Mechanism
 
-### Semantic Search
+The MCP server includes a sophisticated causal boosting mechanism that enhances search relevance by identifying and prioritizing causal relationships:
 
-Search documents with semantic understanding:
+- **Pattern Recognition**: Detects causal language patterns in both queries and documents
+- **Multilingual Support**: Automatically applies appropriate patterns based on detected query language
+- **Configurable Boost Multipliers**: Different types of causal matches receive customizable boost factors
+- **Enhanced Relevance**: Results that explain causal relationships are prioritized in search results
 
-```bash
-# Basic semantic search
-python -m src.data_tools.cli --config config.yaml search "your search query"
+This mechanism significantly improves responses to "why" and "how" questions by surfacing content that explains relationships between concepts. The causal boosting configuration is highly customizable through YAML files, allowing adaptation to different domains and languages.
 
-# Graph-enhanced hybrid search
-python -m src.data_tools.cli --config config.yaml search "your search query" --use-graph --context
-
-# Customize search parameters
-python -m src.data_tools.cli --config config.yaml search "your search query" --use-graph --graph-weight 0.7 --depth 2 --limit 10
-```
-
-### Programmatic Usage
-
-You can also use the data tools in your own Python code:
-
-```python
-from data_tools.config import load_application
-from data_tools.loader_utils import DocumentLoader
-from data_tools.knowledge_graph import KnowledgeGraph
-
-# Load application from config
-app = load_application("config.yaml")
-
-# Index documents
-loader = DocumentLoader(app=app)
-loader.process_directory("/path/to/documents", recursive=True)
-
-# Build knowledge graph
-kg = KnowledgeGraph(app=app)
-kg.build_semantic_graph()
-
-# Perform hybrid search
-results = kg.hybrid_search("your search query", limit=5, graph_weight=0.6)
-
-# Generate context for a query
-context = kg.generate_context("your query", max_results=3, max_length=1000)
-```
-
-### Environment Variables
-
-The Docker container supports the following environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| PORT | Server port | 8000 |
-| HOST | Server host | 0.0.0.0 |
-| TRANSPORT | Transport protocol (sse or stdio) | sse |
-| EMBEDDINGS_PATH | Path to embeddings directory or tar.gz file | /data/embeddings |
-| LOCAL_EMBEDDINGS_PATH | Local path to mount into container (docker-compose only) | ./embeddings |
-| CONTAINER_EMBEDDINGS_PATH | Container path where embeddings are mounted (docker-compose only) | /data/embeddings |
-
-## Knowledge Graph and RAG
-
-The system now includes advanced knowledge graph and Retrieval Augmented Generation (RAG) capabilities.
-
-### Knowledge Graph Features
-
-- **Multiple Graph Building Approaches**:
-  - **Semantic Graph Builder**: Creates connections based on semantic similarity
-  - **Entity Graph Builder**: Extracts entities and relationships using LLMs
-  - **Hybrid Graph Builder**: Combines both semantic and entity approaches
-
-- **Graph Traversal and Querying**:
-  - Path-based traversal with customizable hop limits
-  - Cypher-like query language for complex path expressions
-  - Community detection for identifying related content clusters
-
-- **Visualization**:
-  - Static graph visualization with multiple layout algorithms
-  - Interactive HTML-based visualizations
-  - Path and community visualization
-
-### RAG Pipeline Features
-
-- **Flexible Retrieval Methods**:
-  - **Vector Retrieval**: Traditional embedding-based similarity search
-  - **Graph Retrieval**: Retrieval based on graph relationships
-  - **Path Retrieval**: Advanced retrieval using graph traversal paths
-
-- **Citation Generation**:
-  - Automatic citation of sources used in generation
-  - Verification of generated content against source material
-  - Coverage metrics for response verification
-
-### CLI Usage Examples
-
-#### Building a Knowledge Graph
-
-```bash
-# Build a semantic graph from documents in a directory
-kb graph-build --input /path/to/documents --type semantic --output graph.pkl
-
-# Build an entity-based graph with custom settings
-kb graph-build --input /path/to/documents --type entity --similarity 0.8 --max-connections 10 --model "llm-model-name"
-
-# Visualize the graph after building
-kb graph-build --input /path/to/documents --visualize graph.html
-```
-
-#### Traversing a Knowledge Graph
-
-```bash
-# Simple traversal with a query
-kb graph-traverse "your query" --input graph.pkl
-
-# Advanced traversal with a path query
-kb graph-traverse "your query" --path-query "(a)-[r]->(b)" --max-hops 3 --limit 5
-
-# Visualize traversal results
-kb graph-traverse "your query" --visualize path.html
-```
-
-#### Visualizing a Knowledge Graph
-
-```bash
-# Create an interactive HTML visualization
-kb graph-visualize --input graph.pkl --output graph.html
-
-# Create a static visualization with custom layout
-kb graph-visualize --input graph.pkl --output graph.png --layout kamada_kawai --node-size 500 --font-size 10
-
-# Visualize with community detection
-kb graph-visualize --input graph.pkl --output communities.html --community-detection
-```
-
-#### Using the RAG Pipeline
-
-```bash
-# Simple RAG with vector retrieval
-kb rag "your question" --retriever vector --model "llm-model-name"
-
-# Graph-based RAG
-kb rag "your question" --retriever graph --graph graph.pkl
-
-# Path-based RAG with custom path expression
-kb rag "your question" --retriever path --graph graph.pkl --path-expression "(a)-[r]->(b)"
-
-# RAG with citations
-kb rag "your question" --retriever vector --citations
-```
-
-### Python API Examples
-
-```python
-from data_tools.graph_builder import create_graph_builder
-from data_tools.graph_traversal import GraphTraversal, PathQuery
-from data_tools.rag import RAGPipeline
-from data_tools.visualization import GraphVisualizer, VisualizationOptions
-
-# Create a graph builder
-builder = create_graph_builder("semantic", embeddings, {
-    "similarity_threshold": 0.75,
-    "max_connections": 5
-})
-
-# Build a graph
-graph = builder.build(documents)
-builder.save("graph.pkl")
-
-# Create a graph traversal
-traversal = GraphTraversal(graph, {
-    "max_path_length": 3,
-    "max_paths": 10
-})
-
-# Query paths
-paths = traversal.query_paths("your query")
-
-# Create a path query
-query = PathQuery("(a)-[r]->(b)")
-paths = traversal.query_paths("your query", query)
-
-# Create a RAG pipeline
-pipeline = RAGPipeline(embeddings, {
-    "retriever": "vector",
-    "generator": {
-        "model": "model-name",
-        "max_tokens": 1024
-    },
-    "citation": {
-        "enabled": True
-    }
-})
-
-# Generate a response
-response = pipeline.generate("your question")
-
-# Generate a response with citations
-result = pipeline.generate_with_citations("your question")
-print(result["response"])
-print(result["citations"])
-print(result["verification"])
-
-# Visualize a graph
-visualizer = GraphVisualizer(graph, VisualizationOptions({
-    "layout": "spring",
-    "node_size": 750,
-    "font_size": 8
-}))
-
-# Create static visualization
-visualizer.visualize_graph("graph.png")
-
-# Create interactive HTML visualization
-visualizer.export_to_html("graph.html")
-
-# Visualize a path
-visualizer.visualize_path(paths[0], "path.png")
-```
-
-## Usage
-
-### Starting the Server
-
-```python
-from src.txtai_mcp_server.core import create_server
-
-# Create server instance
-mcp = create_server()
-
-# Run with stdio transport
-async with stdio_server() as (read_stream, write_stream):
-    await mcp.run(read_stream, write_stream)
-```
-
-### Available Tools
-
-- **Search Tools**
-  - `semantic_search`: Search for semantically similar content
-  - `add_content`: Add content to the search index
-  - `delete_content`: Remove content from the index
-
-- **Text Processing Tools**
-  - `summarize`: Generate text summaries
-  - `translate`: Translate text between languages
-  - `extract_text`: Extract text from various formats
-
-### Available Resources
-
-- **Configuration Resources**
-  - `config://embeddings`: Embeddings configuration
-  - `config://pipelines`: Pipeline configurations
-  - `config://server`: Server configuration
-
-- **Model Resources**
-  - `model://embeddings/{name}`: Embedding model information
-  - `model://pipeline/{name}`: Pipeline information
-  - `model://capabilities`: Available model capabilities
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
 
 ## License
 
 MIT License - see LICENSE file for details
+
+
+
+

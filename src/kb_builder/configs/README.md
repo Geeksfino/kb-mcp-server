@@ -1,8 +1,16 @@
-# Domain-Specific Configuration Templates
+# Knowledge Base Configuration Templates
 
-This directory contains YAML configuration templates optimized for different content domains. Each template is pre-configured with parameters that work well for a specific type of content.
+This directory contains YAML configuration templates for building knowledge bases with txtai. These templates are used during the knowledge base building phase with the `kb_builder` tool.
 
-## Available Templates
+## Configuration Types
+
+### Storage and Backend Configurations
+
+- `memory.yml` - In-memory vectors (no persistence, fastest for development)
+- `sqlite-faiss.yml` - SQLite for content + FAISS for vectors (local file-based persistence)
+- `postgres-pgvector.yml` - PostgreSQL + pgvector (production-ready with full persistence)
+
+### Domain-Specific Configurations
 
 - `base.yml` - Foundation template with common settings
 - `technical_docs.yml` - Optimized for technical documentation and manuals
@@ -16,7 +24,11 @@ This directory contains YAML configuration templates optimized for different con
 To use these templates, specify the path to the desired configuration file when building your knowledge base:
 
 ```bash
-python -m data_tools.cli build --config src/data_tools/configs/data_science.yml --input your_data_file.md
+# Using a domain-specific configuration
+python -m kb_builder build --config src/kb_builder/configs/technical_docs.yml --input /path/to/documents
+
+# Using a storage-specific configuration
+python -m kb_builder build --config src/kb_builder/configs/postgres-pgvector.yml --input /path/to/documents
 ```
 
 ## Customization
@@ -29,6 +41,12 @@ These templates provide a starting point. You may need to adjust parameters base
 4. **Search**: Adjust search parameters to match your typical query patterns
 
 ## Parameter Explanations
+
+### Storage and Backend
+- `path`: Where to save the index
+- `content.path`: Storage location for document content
+- `embeddings.backend`: Vector storage backend (faiss, pgvector, etc.)
+- `graph.backend`: Graph storage backend (sqlite, networkx, etc.)
 
 ### Text Extraction
 - `paragraphs`: Extract by paragraphs (good for articles)
@@ -47,8 +65,12 @@ These templates provide a starting point. You may need to adjust parameters base
 - `max_hops`: Maximum graph traversal distance
 - `min_score`: Minimum score threshold for search results
 
-### Search
-- `limit`: Maximum number of results to return
+## Additional Resources
+
+- [txtai Configuration Guide](https://neuml.github.io/txtai/api/configuration)
+- [Embeddings Configuration](https://neuml.github.io/txtai/embeddings/configuration)
+- [Pipeline Configuration](https://neuml.github.io/txtai/pipeline)
+- [Workflow Configuration](https://neuml.github.io/txtai/workflow)
 - `weights`: Balance between keyword (bm25) and semantic (similarity) search
 
 ## Best Practices
