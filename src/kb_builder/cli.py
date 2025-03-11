@@ -291,13 +291,22 @@ def build_command(args):
     # Use the application's add method which handles both indexing and saving
     logger.info("Indexing documents...")
     try:
-        # Add documents to the index
-        app.add(documents)
-        
         # Build or update the index
         if hasattr(args, 'update') and args.update:
             # Use upsert to update the existing index
-            app.embeddings.upsert(app.database.stream())
+            # The database.stream() method doesn't exist, directly use the documents list
+            # Convert metadata to JSON string if it's a dictionary to avoid SQLite binding errors
+            documents_for_upsert = []
+            for i, doc in enumerate(documents):
+                doc_id = doc.get("id", i)
+                text = doc.get("text", "")
+                metadata = doc.get("metadata")
+                # Convert metadata to JSON string if it's a dictionary
+                if isinstance(metadata, dict):
+                    metadata = json.dumps(metadata)
+                documents_for_upsert.append((doc_id, text, metadata))
+            
+            app.embeddings.upsert(documents_for_upsert)
             logger.info("Documents added to existing index successfully")
         else:
             # Rebuild the entire index
