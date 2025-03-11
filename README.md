@@ -245,16 +245,18 @@ Common configuration options:
 
 To configure an LLM client to use the MCP server, you need to create an MCP configuration file. Here's an example `mcp_config.json`:
 
+### Using the server directly
+
+If you use a virtual Python environment to install the server, you can use the following configuration - note that MCP host like Claude will not be able to connect to the server if you use a virtual environment, you need to use the absolute path to the Python executable of the virtual environment where you did "pip install" or "uv pip install", for example
+
 ```json
 {
   "mcpServers": {
     "kb-server": {
-      "command": "/path/to/python",
+      "command": "/your/home/project/.venv/bin/kb-mcp-server",
       "args": [
-        "-m", "txtai_mcp_server",
-        "--embeddings", "/path/to/knowledge_base",
-        "--host", "localhost",
-        "--port", "8000"
+        "--embeddings", 
+        "/path/to/knowledge_base.tar.gz"
       ],
       "cwd": "/path/to/working/directory"
     }
@@ -262,7 +264,63 @@ To configure an LLM client to use the MCP server, you need to create an MCP conf
 }
 ```
 
-Alternatively, if you're using uvx:
+### Using system default Python
+
+If you use your system default Python, you can use the following configuration:
+
+```json
+{
+    "rag-server": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "txtai_mcp_server",
+        "--embeddings",
+        "/path/to/knowledge_base.tar.gz",
+        "--enable-causal-boost"
+      ],
+      "cwd": "/path/to/working/directory"
+    }
+}
+```
+
+Alternatively, if you're using uvx, assuming you have uvx installed in your system via "brew install uvx" etc, or you 've installed uvx and made it globally accessible via:
+```
+# Create a symlink to /usr/local/bin (which is typically in the system PATH)
+sudo ln -s /Users/cliang/.local/bin/uvx /usr/local/bin/uvx
+```
+This creates a symbolic link from your user-specific installation to a system-wide location. For macOS applications like Claude Desktop, you can modify the system-wide PATH by creating or editing a launchd configuration file:
+```
+# Create a plist file to set environment variables for all GUI applications
+sudo nano /Library/LaunchAgents/environment.plist
+```
+Add this content:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>my.startup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>sh</string>
+    <string>-c</string>
+    <string>launchctl setenv PATH $PATH:/Users/cliang/.local/bin</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+```
+
+Then load it:
+```
+sudo launchctl load -w /Library/LaunchAgents/environment.plist
+```
+You'll need to restart your computer for this to take effect, though.
+
 
 ```json
 {
