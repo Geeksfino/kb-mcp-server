@@ -84,6 +84,21 @@ uv pip install kb-mcp-server
 uv pip install -e .
 ```
 
+### Using uvx (No Installation Required)
+
+[uvx](https://github.com/astral-sh/uv) allows you to run packages directly from PyPI without installing them:
+
+```bash
+# Run the MCP server
+uvx kb-mcp-server@0.2.6 --embeddings /path/to/knowledge_base
+
+# Build a knowledge base
+uvx kb-build@0.2.6 --input /path/to/documents --config config.yml
+
+# Search a knowledge base
+uvx kb-search@0.2.6 /path/to/knowledge_base "Your search query"
+```
+
 ## Command Line Usage
 
 ### Building a Knowledge Base
@@ -107,6 +122,25 @@ kb-search /path/to/knowledge_base "What is machine learning?"
 
 # Search with graph enhancement
 kb-search /path/to/knowledge_base "What is machine learning?" --graph --limit 10
+```
+
+#### Using uvx (No Installation Required)
+
+```bash
+# Build a knowledge base from documents
+uvx kb-build@0.2.6 --input /path/to/documents --config config.yml
+
+# Update an existing knowledge base with new documents
+uvx kb-build@0.2.6 --input /path/to/new_documents --update
+
+# Export a knowledge base for portability
+uvx kb-build@0.2.6 --input /path/to/documents --export my_knowledge_base.tar.gz
+
+# Search a knowledge base
+uvx kb-search@0.2.6 /path/to/knowledge_base "What is machine learning?"
+
+# Search with graph enhancement
+uvx kb-search@0.2.6 /path/to/knowledge_base "What is machine learning?" --graph --limit 10
 ```
 
 #### Using the Python Module
@@ -157,6 +191,16 @@ kb-mcp-server --embeddings /path/to/knowledge_base_folder
 kb-mcp-server --embeddings /path/to/knowledge_base.tar.gz
 ```
 
+#### Using uvx (No Installation Required)
+
+```bash
+# Start with a specific knowledge base folder
+uvx kb-mcp-server@0.2.6 --embeddings /path/to/knowledge_base_folder
+
+# Start with a given knowledge base archive
+uvx kb-mcp-server@0.2.6 --embeddings /path/to/knowledge_base.tar.gz
+```
+
 #### Using the Python Module
 
 ```bash
@@ -176,6 +220,9 @@ Here's how to configure the MCP server:
 # Start the server with command-line arguments
 kb-mcp-server --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
 
+# Or using uvx (no installation required)
+uvx kb-mcp-server@0.2.6 --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
+
 # Or using the Python module
 python -m txtai_mcp_server --embeddings /path/to/knowledge_base --host 0.0.0.0 --port 8000
 
@@ -193,6 +240,48 @@ Common configuration options:
 - `--transport`: Transport to use, either 'sse' or 'stdio' (default: stdio)
 - `--enable-causal-boost`: Enable causal boost feature for enhanced relevance scoring
 - `--causal-config`: Path to custom causal boost configuration YAML file
+
+## Configuring LLM Clients to Use the MCP Server
+
+To configure an LLM client to use the MCP server, you need to create an MCP configuration file. Here's an example `mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "kb-server": {
+      "command": "/path/to/python",
+      "args": [
+        "-m", "txtai_mcp_server",
+        "--embeddings", "/path/to/knowledge_base",
+        "--host", "localhost",
+        "--port", "8000"
+      ],
+      "cwd": "/path/to/working/directory"
+    }
+  }
+}
+```
+
+Alternatively, if you're using uvx:
+
+```json
+{
+  "mcpServers": {
+    "kb-server": {
+      "command": "uvx",
+      "args": [
+        "kb-mcp-server@0.2.6",
+        "--embeddings", "/path/to/knowledge_base",
+        "--host", "localhost",
+        "--port", "8000"
+      ],
+      "cwd": "/path/to/working/directory"
+    }
+  }
+}
+```
+
+Place this configuration file in a location accessible to your LLM client and configure the client to use it. The exact configuration steps will depend on your specific LLM client.
 
 ## Advanced Knowledge Base Configuration
 

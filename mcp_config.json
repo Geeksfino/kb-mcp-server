@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "rag-server": {
+    "kb-server": {
       "command": "/Users/cliang/repos/mygithub/embedding-mcp-server/.venv/bin/python",
       "args": [
         "/Users/cliang/repos/mygithub/embedding-mcp-server/main.py"
