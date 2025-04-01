@@ -41,6 +41,28 @@ The MCP server provides a standardized interface to access the knowledge base:
 
 ## Installation
 
+### Recommended: Using uv with Python 3.10+
+
+We recommend using [uv](https://github.com/astral-sh/uv) with Python 3.10 or newer for the best experience. This provides better dependency management and ensures consistent behavior.
+
+```bash
+# Install uv if you don't have it already
+pip install -U uv
+
+# Create a virtual environment with Python 3.10 or newer
+uv venv --python=3.10  # or 3.11, 3.12, etc.
+
+# Activate the virtual environment (bash/zsh)
+source .venv/bin/activate
+# For fish shell
+# source .venv/bin/activate.fish
+
+# Install from PyPI
+uv pip install kb-mcp-server
+```
+
+> **Note**: We pin transformers to version 4.49.0 to avoid deprecation warnings about `transformers.agents.tools` that appear in version 4.50.0 and newer. If you use a newer version of transformers, you may see these warnings, but they don't affect functionality.
+
 ### Using conda
 
 ```bash

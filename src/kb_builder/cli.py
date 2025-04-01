@@ -306,16 +306,36 @@ def build_command(args):
                     metadata = json.dumps(metadata)
                 documents_for_upsert.append((doc_id, text, metadata))
             
+            # Make sure the directory exists before upserting
+            if app.config and "path" in app.config:
+                os.makedirs(app.config["path"], exist_ok=True)
+                
+            # Add documents to the index
             app.embeddings.upsert(documents_for_upsert)
             logger.info("Documents added to existing index successfully")
         else:
-            # Rebuild the entire index
+            # Make sure the directory exists before indexing
+            if app.config and "path" in app.config:
+                os.makedirs(app.config["path"], exist_ok=True)
+                
+            # Add documents to the buffer
+            app.add(documents)
+            
+            # Build the index
             app.index()
             logger.info("Documents indexed successfully")
         
         # Log if graph was built
         if hasattr(app.embeddings, 'graph') and app.embeddings.graph:
             logger.info("Knowledge graph was automatically built based on YAML configuration")
+            
+        # Explicitly save the index to the configured path
+        if app.config and "path" in app.config:
+            save_path = app.config["path"]
+            logger.info(f"Saving index to configured path: {save_path}")
+            os.makedirs(save_path, exist_ok=True)
+            app.embeddings.save(save_path)
+            logger.info(f"Index successfully saved to {save_path}")
             
         # Export the index to a tar.gz file if requested
         if hasattr(args, 'export') and args.export:

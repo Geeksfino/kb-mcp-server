@@ -1,6 +1,6 @@
 [project]
 name = "kb-mcp-server"
-version = "0.2.7"
+version = "0.3.0"
 description = "A Model Context Protocol (MCP) server implementation for txtai"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,7 +14,7 @@ dependencies = [
     "txtai[all,pipeline,graph]>=8.3.1",  # Include all txtai extras for full functionality
     "datasets",
     "torch>=2.0.0",
-    "transformers>=4.30.0",
+    "transformers==4.49.0",  # This version avoids deprecation warnings for transformers.agents.tools
     "sentence-transformers>=2.2.0",
     "httpx>=0.28.1",
     "bitsandbytes==0.42.0",  # Pin to working version
