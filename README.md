@@ -112,13 +112,13 @@ uv pip install -e .
 
 ```bash
 # Run the MCP server
-uvx kb-mcp-server@0.2.6 --embeddings /path/to/knowledge_base
+uvx --from kb-mcp-server@0.3.0 kb-mcp-server --embeddings /path/to/knowledge_base
 
 # Build a knowledge base
-uvx kb-build@0.2.6 --input /path/to/documents --config config.yml
+uvx --from kb-mcp-server@0.3.0 kb-build --input /path/to/documents --config config.yml
 
 # Search a knowledge base
-uvx kb-search@0.2.6 /path/to/knowledge_base "Your search query"
+uvx --from kb-mcp-server@0.3.0 kb-search /path/to/knowledge_base "Your search query"
 ```
 
 ## Command Line Usage
@@ -150,19 +150,19 @@ kb-search /path/to/knowledge_base "What is machine learning?" --graph --limit 10
 
 ```bash
 # Build a knowledge base from documents
-uvx kb-build@0.2.6 --input /path/to/documents --config config.yml
+uvx --from kb-mcp-server@0.3.0 kb-build --input /path/to/documents --config config.yml
 
 # Update an existing knowledge base with new documents
-uvx kb-build@0.2.6 --input /path/to/new_documents --update
+uvx --from kb-mcp-server@0.3.0 kb-build --input /path/to/new_documents --update
 
 # Export a knowledge base for portability
-uvx kb-build@0.2.6 --input /path/to/documents --export my_knowledge_base.tar.gz
+uvx --from kb-mcp-server@0.3.0 kb-build --input /path/to/documents --export my_knowledge_base.tar.gz
 
 # Search a knowledge base
-uvx kb-search@0.2.6 /path/to/knowledge_base "What is machine learning?"
+uvx --from kb-mcp-server@0.3.0 kb-search /path/to/knowledge_base "What is machine learning?"
 
 # Search with graph enhancement
-uvx kb-search@0.2.6 /path/to/knowledge_base "What is machine learning?" --graph --limit 10
+uvx --from kb-mcp-server@0.3.0 kb-search /path/to/knowledge_base "What is machine learning?" --graph --limit 10
 ```
 
 #### Using the Python Module
