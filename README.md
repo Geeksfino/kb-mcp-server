@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/geeksfino-kb-mcp-server-badge.png)](https://mseep.ai/app/geeksfino-kb-mcp-server)
+
 # Embedding MCP Server
 
 A Model Context Protocol (MCP) server implementation powered by txtai, providing semantic search, knowledge graph capabilities, and AI-driven text processing through a standardized interface.
