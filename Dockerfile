@@ -19,7 +19,7 @@ RUN apt-get update && \
 COPY pyproject.toml uv.lock* /app/
 
 # Install main dependencies
-RUN uv pip install txtai[all,pipeline,graph]>=8.3.1 \
+RUN uv pip install --verbose txtai[all,pipeline,graph]>=8.3.1 \
     trio httpx>=0.28.1 pydantic-settings>=2.0 \
     networkx>=2.8.0 matplotlib>=3.5.0 PyPDF2>=2.0.0 \
     python-docx>=0.8.11 python-louvain>=0.16.0 \
