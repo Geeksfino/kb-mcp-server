@@ -19,7 +19,7 @@ RUN apt-get update && \
 COPY pyproject.toml uv.lock* /app/
 
 # Install main dependencies
-RUN uv pip install --verbose txtai[all,pipeline,graph]>=8.3.1 \
+RUN uv pip install --verbose --system txtai[all,pipeline,graph]>=8.3.1 \
     trio httpx>=0.28.1 pydantic-settings>=2.0 \
     networkx>=2.8.0 matplotlib>=3.5.0 PyPDF2>=2.0.0 \
     python-docx>=0.8.11 python-louvain>=0.16.0 \
@@ -27,13 +27,13 @@ RUN uv pip install --verbose txtai[all,pipeline,graph]>=8.3.1 \
     transformers>=4.30.0 sentence-transformers>=2.2.0 \
     bitsandbytes==0.42.0 beautifulsoup4>=4.10.0 \
     pandas>=1.3.0 markdown>=3.3.0
-RUN uv pip install mcp==1.3.0
+RUN uv pip install --verbose --system mcp==1.3.0
 
 # Copy the rest of the application files
 COPY . /app/
 
 # Install the project
-RUN uv pip install -e .
+RUN uv pip install --verbose --system -e .
 
 # Set Python path
 ENV PYTHONPATH=/app
