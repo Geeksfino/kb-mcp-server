@@ -123,6 +123,61 @@ uvx --from kb-mcp-server@0.3.0 kb-build --input /path/to/documents --config conf
 uvx --from kb-mcp-server@0.3.0 kb-search /path/to/knowledge_base "Your search query"
 ```
 
+## Running with Docker
+
+This project includes a `Dockerfile` and a helper script to build and run the MCP server in a Docker container.
+
+### 1. Building the Image
+
+Use the `build-docker.sh` script to build the Docker image:
+
+```bash
+./build-docker.sh --image-name my-mcp-server
+```
+
+This script handles the Docker build process. By default, it pre-downloads the `sentence-transformers/nli-mpnet-base-v2` model. You can customize the Hugging Face models downloaded during the build by passing arguments to the script. For example, to use a different sentence transformer model:
+
+```bash
+./build-docker.sh --image-name my-mcp-server --sentence-transformers "another/model-name"
+```
+
+Refer to the `build-docker.sh` script and `download_models.py` for more details on available model arguments (e.g., `--transformers` for other types of models).
+
+The image is built with a non-root user (`appuser`) for enhanced security.
+
+### 2. Running the Container
+
+Once the image is built, you can run it using the `docker run` command.
+
+```bash
+# Prepare a directory on your host for embeddings data
+mkdir -p ./my_embeddings_data
+# Ensure appuser (UID 1000, GID 1000 by default) in the container can write to this directory
+sudo chown 1000:1000 ./my_embeddings_data 
+
+# Run the container
+docker run -d --rm \
+  -p 8000:8000 \
+  -v $(pwd)/my_embeddings_data:/data/embeddings \
+  --name mcp-server-container \
+  my-mcp-server
+```
+
+**Explanation:**
+
+*   `-d`: Runs the container in detached mode (in the background).
+*   `--rm`: Automatically removes the container when it exits.
+*   `-p 8000:8000`: Maps port 8000 on your host to port 8000 in the container, where the MCP server listens by default.
+*   `-v $(pwd)/my_embeddings_data:/data/embeddings`: This is crucial for data persistence. It mounts the `my_embeddings_data` directory from your current working directory on the host to `/data/embeddings` inside the container. The MCP server will store its knowledge base here.
+    *   **Important Note on Permissions:** The container runs as a non-root user `appuser` (typically with UID 1000 and GID 1000). For the server to write to the mounted volume, the host directory (`./my_embeddings_data` in this example) **must be writable by this UID/GID**. The `sudo chown 1000:1000 ./my_embeddings_data` command is often necessary on the host to set the correct ownership. If your `appuser` in the Docker image has a different UID/GID (e.g., if you customized the Dockerfile), adjust the `chown` command accordingly.
+*   `--name mcp-server-container`: Assigns a name to your container for easier management.
+*   `my-mcp-server`: The name of the image you built.
+
+Environment variables like `TXTAI_EMBEDDINGS` (which defaults to `/data/embeddings/kb_mcp_server_default_kb` if not found, or loads an existing one from `/data/embeddings`) and `MCP_SSE_PORT` (default `8000`) are set by default in the Docker image. You can override these using the `-e` flag in the `docker run` command if needed, for example:
+`docker run -e TXTAI_EMBEDDINGS=/data/embeddings/my_custom_kb ...`
+
+The server inside the container will automatically try to load an existing knowledge base from `/data/embeddings` or create a new default one if the directory is empty.
+
 ## Command Line Usage
 
 ### Building a Knowledge Base

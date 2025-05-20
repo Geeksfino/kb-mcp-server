@@ -15,10 +15,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY . /app/
+# Copy dependency definition files
+COPY pyproject.toml uv.lock* /app/
 
-# Install txtai and other dependencies
+# Install main dependencies
 RUN uv pip install txtai[all,pipeline,graph]>=8.3.1 \
     trio httpx>=0.28.1 pydantic-settings>=2.0 \
     networkx>=2.8.0 matplotlib>=3.5.0 PyPDF2>=2.0.0 \
@@ -27,9 +27,10 @@ RUN uv pip install txtai[all,pipeline,graph]>=8.3.1 \
     transformers>=4.30.0 sentence-transformers>=2.2.0 \
     bitsandbytes==0.42.0 beautifulsoup4>=4.10.0 \
     pandas>=1.3.0 markdown>=3.3.0
-
-# Install MCP as a normal Python package
 RUN uv pip install mcp==1.3.0
+
+# Copy the rest of the application files
+COPY . /app/
 
 # Install the project
 RUN uv pip install -e .
@@ -38,11 +39,10 @@ RUN uv pip install -e .
 ENV PYTHONPATH=/app
 
 # Make scripts executable
+# These are still run as root, so +x is enough.
+# The new appuser will need read and execute permissions.
 RUN chmod +x /app/docker-entrypoint.sh
 RUN chmod +x /app/download_models.py
-
-# Create volume mount points
-RUN mkdir -p /data/embeddings
 
 # Download Hugging Face models if specified
 ARG HF_TRANSFORMERS_MODELS=""
@@ -79,6 +79,15 @@ ENV HF_SENTENCE_TRANSFORMERS_MODELS=$HF_SENTENCE_TRANSFORMERS_MODELS
 
 # Expose port
 EXPOSE 8000
+
+# Create a non-root user and group
+RUN groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin -c "Docker image user" appuser
+
+# Create and set ownership for directories
+RUN mkdir -p /data/embeddings && chown -R appuser:appgroup /data/embeddings /app
+
+# Switch to non-root user
+USER appuser
 
 # Use the entrypoint script
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
