@@ -14,7 +14,7 @@ dependencies = [
     "txtai[all,pipeline,graph]>=8.3.1",  # Include all txtai extras for full functionality
     "datasets",
     "torch>=2.0.0",
-    "transformers==4.49.0",  # This version avoids deprecation warnings for transformers.agents.tools
+    "transformers==4.52.1",  # This version avoids deprecation warnings for transformers.agents.tools
     "sentence-transformers>=2.2.0",
     "httpx>=0.28.1",
     "bitsandbytes==0.42.0",  # Pin to working version
