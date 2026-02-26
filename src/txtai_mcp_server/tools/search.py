@@ -90,7 +90,7 @@ def register_search_tools(mcp: FastMCP) -> None:
                         "text": node_data.get("text", "No text available"),
                         "score": node_data.get("score", 0.0),
                         "centrality": results.centrality()[node_id],
-                        "connections": len(results.neighbors(node_id))
+                        "connections": len(results.edges(node_id) or {})
                     }
                     
                     formatted_results.append(formatted_node)
@@ -112,7 +112,14 @@ def register_search_tools(mcp: FastMCP) -> None:
                         score = result["score"]
                         
                         # Try to get the document text from the cache
-                        text = get_document_from_cache(doc_id) or "No text available"
+                        text = get_document_from_cache(doc_id)
+                        if not text:
+                            try:
+                                safe_id = escape_sql_string(str(doc_id))
+                                sql_result = app.search(f"select text from txtai where id = '{safe_id}'")
+                                text = sql_result[0].get("text", "No text available") if sql_result else "No text available"
+                            except Exception:
+                                text = "No text available"
                         logger.info(f"Retrieved document {doc_id}: text available: {text != 'No text available'}")
                         
                         # Add formatted result

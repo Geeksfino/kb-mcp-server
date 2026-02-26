@@ -85,7 +85,7 @@ def register_qa_tools(mcp: FastMCP) -> None:
                 sql_query = f"select text, answer, score from txtai where similar('{safe_question}') limit 1"
                 results = app.search(sql_query)
                 
-                if results and len(results) > 0 and "answer" in results[0]:
+                if results and results[0].get("answer"):
                     return results[0]["answer"]
             except Exception as e:
                 logger.info(f"Error getting answer field: {str(e)}, falling back to text field")

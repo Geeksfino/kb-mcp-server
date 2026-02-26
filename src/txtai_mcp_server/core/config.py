@@ -1,6 +1,7 @@
 """Configuration for txtai MCP server."""
 import os
 import logging
+import tarfile, json
 from pathlib import Path
 from typing import Dict, Any, Optional, Literal, Union, Tuple
 
@@ -45,6 +46,26 @@ class TxtAISettings(BaseSettings):
         """Load settings from environment and .env file."""
         return cls.model_validate({})  # Empty dict will load from env vars
     
+    def _detect_model_from_archive(self, kb_path: str) -> str:
+        """Read embedding model path from KB config.json to prevent dimension mismatch."""
+        try:
+            with tarfile.open(kb_path) as tar:
+                # txtai stores embeddings config as config.json or embeddings/config.json
+                for candidate in ["config.json", "./config.json", "embeddings/config.json"]:
+                    try:
+                        f = tar.extractfile(candidate)
+                        if f:
+                            cfg = json.load(f)
+                            model = cfg.get("path")
+                            if model:
+                                logger.info(f"Detected embedding model from KB archive: {model}")
+                                return model
+                    except KeyError:
+                        continue
+        except Exception as e:
+            logger.warning(f"Could not detect model from KB archive: {e}")
+        return self.model_path  # safe fallback — keep current value
+
     def create_application(self) -> Application:
         """Create txtai Application instance.
         
@@ -71,8 +92,12 @@ class TxtAISettings(BaseSettings):
             logger.info(f"Creating Application from embeddings path: {self.embeddings_path}")
             # For embeddings path, we need to use a YAML string with the path
             if os.path.isfile(self.embeddings_path) and self.embeddings_path.endswith(('.tar.gz', '.tgz')):
-                # For archive files, use a YAML string with the path
+                # For archive files, detect model from KB config.json to prevent dimension mismatch
                 logger.info(f"Loading embeddings from archive file: {self.embeddings_path}")
+                detected_model = self._detect_model_from_archive(self.embeddings_path)
+                if detected_model != self.model_path:
+                    logger.info(f"Overriding model_path {self.model_path} with KB-detected model: {detected_model}")
+                    self.model_path = detected_model
                 return Application(f"path: {self.embeddings_path}")
             else:
                 # For directories, load directly
